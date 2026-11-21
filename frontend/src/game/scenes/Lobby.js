@@ -16,9 +16,17 @@ export class WaitingLobby extends BaseGameScene {
     init(data) {
         super.init(data);
         this.laptopOpen = false;
+        this._lobbyReady = false;
+        this._pendingStartData = null;
+        EventBus.off('start-game', this.handleStartGame, this);
+        EventBus.on('start-game', this.handleStartGame, this);
     }
 
     handleStartGame(data) {
+        if (!this._lobbyReady) {
+            this._pendingStartData = data;
+            return;
+        }
         if (this.scene && this.scene.isActive('WaitingLobby')) {
             this.scene.start('Game', data);
         }
@@ -54,12 +62,19 @@ export class WaitingLobby extends BaseGameScene {
         }
 
         await this.createCommon();
+        if (!this.sys || !this.sys.displayList) return;
+        this._lobbyReady = true;
+        if (this._pendingStartData) {
+            const pending = this._pendingStartData;
+            this._pendingStartData = null;
+            this.scene.start('Game', pending);
+            return;
+        }
+
         this.setupLobbyEffects();
         this.setupLobbyLaptopUI();
         this.setupLobbyCustomListeners();
 
-        EventBus.off('start-game', this.handleStartGame, this);
-        EventBus.on('start-game', this.handleStartGame, this);
         EventBus.off('laptop:modal-state', this.handleLaptopState, this);
         EventBus.on('laptop:modal-state', this.handleLaptopState, this);
     }
