@@ -3,7 +3,7 @@
   inset: 0;
   display: grid;
   place-items: center;
-  background-color: #000;
+  background-color: #02040a;
   overflow: hidden;
 }
 
@@ -21,24 +21,47 @@
   align-items: center;
 }
 
+.topRightBar {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 1000;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
 .backButton {
-  padding: 7px 14px;
-  background-color: #e11d48;
+  padding: 8px 14px;
+  background: linear-gradient(135deg, #e11d48, #be123c);
   color: #fff;
   border: 1.5px solid rgba(255, 255, 255, 0.25);
-  border-radius: 8px;
+  border-radius: 10px;
   cursor: pointer;
-  font-weight: 700;
+  font-weight: 800;
+  font-size: 0.86rem;
+  box-shadow: 0 6px 18px rgba(225, 29, 72, 0.3);
+  transition: transform 0.12s ease, filter 0.15s ease;
+}
+
+.backButton:hover,
+.muteBtn:hover,
+.mapToggleBtn:hover,
+.settingsBtn:hover,
+.quickColorBtn:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.1);
 }
 
 .muteBtn {
-  padding: 6px 10px;
-  background: rgba(15, 23, 42, 0.85);
+  padding: 7px 11px;
+  background: rgba(15, 23, 42, 0.88);
   color: #fff;
   border: 1.5px solid rgba(148, 163, 184, 0.35);
-  border-radius: 8px;
+  border-radius: 10px;
   cursor: pointer;
   font-size: 1rem;
+  backdrop-filter: blur(8px);
 }
 
 .roomTag {
@@ -47,46 +70,76 @@
   left: 50%;
   transform: translateX(-50%);
   z-index: 1000;
-  padding: 7px 16px;
-  background: rgba(15, 23, 42, 0.88);
-  border: 1.5px solid rgba(78, 204, 163, 0.45);
-  color: #4ecca3;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 18px;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1.5px solid rgba(78, 204, 163, 0.5);
+  color: #a7f3d0;
   border-radius: 999px;
   font-family: monospace;
-  font-size: 14px;
-  font-weight: 700;
+  font-size: 13.5px;
+  font-weight: 800;
   cursor: pointer;
-  backdrop-filter: blur(6px);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
   white-space: nowrap;
 }
 
-.mapToggleBtn {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  z-index: 1000;
-  padding: 7px 14px;
-  background: rgba(15, 23, 42, 0.88);
-  border: 1.5px solid rgba(56, 189, 248, 0.55);
+.liveDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #4ecca3;
+  box-shadow: 0 0 10px #4ecca3;
+  animation: pulseLive 1.5s ease-in-out infinite alternate;
+}
+
+@keyframes pulseLive {
+  from { opacity: 0.65; transform: scale(0.9); }
+  to { opacity: 1; transform: scale(1.2); }
+}
+
+.mapToggleBtn,
+.quickColorBtn,
+.settingsBtn {
+  padding: 8px 14px;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1.5px solid rgba(56, 189, 248, 0.5);
   color: #e0f2fe;
-  border-radius: 8px;
+  border-radius: 10px;
   cursor: pointer;
-  font-weight: 700;
+  font-weight: 800;
+  font-size: 0.86rem;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+  transition: transform 0.12s ease, border-color 0.15s ease;
+}
+
+.settingsBtn {
+  border-color: rgba(78, 204, 163, 0.6);
+  color: #a7f3d0;
+}
+
+.quickColorBtn {
+  border-color: rgba(250, 204, 21, 0.55);
+  color: #fef08a;
 }
 
 .lobbyRulesCard {
   position: absolute;
-  top: 56px;
+  top: 58px;
   left: 12px;
   z-index: 900;
-  width: 235px;
-  background: rgba(15, 23, 42, 0.72);
-  border: 1.5px solid rgba(148, 163, 184, 0.28);
-  border-radius: 10px;
+  width: 242px;
+  background: rgba(15, 23, 42, 0.82);
+  border: 1.5px solid rgba(148, 163, 184, 0.32);
+  border-radius: 12px;
   padding: 10px 12px;
-  backdrop-filter: blur(6px);
+  backdrop-filter: blur(10px);
   color: #e2e8f0;
-  pointer-events: none;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.45);
 }
 
 .lobbyRulesTitle {
@@ -94,28 +147,49 @@
   justify-content: space-between;
   align-items: center;
   font-size: 0.72rem;
-  font-weight: 800;
-  letter-spacing: 0.05em;
+  font-weight: 900;
+  letter-spacing: 0.06em;
   color: #7dd3fc;
-  margin-bottom: 6px;
-  padding-bottom: 4px;
+  padding-bottom: 5px;
   border-bottom: 1px solid rgba(148, 163, 184, 0.2);
 }
 
+.cardHeaderRight {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.collapseBtn {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  color: #e2e8f0;
+  border-radius: 5px;
+  width: 22px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 0.72rem;
+  line-height: 1;
+}
+
 .lobbyMapBadge {
-  background: rgba(78, 204, 163, 0.2);
+  background: rgba(78, 204, 163, 0.22);
   color: #a7f3d0;
-  padding: 1px 6px;
-  border-radius: 4px;
+  padding: 2px 7px;
+  border-radius: 5px;
   font-size: 0.68rem;
 }
 
 .lobbyRulesList {
+  margin-top: 6px;
   display: flex;
   flex-direction: column;
   gap: 2px;
   font-size: 0.74rem;
-  line-height: 1.35;
+  line-height: 1.38;
 }
 
 .lobbyRulesList b {
@@ -131,50 +205,61 @@
 
 .taskHud {
   position: absolute;
-  top: 56px;
+  top: 58px;
   left: 12px;
   z-index: 900;
-  width: 245px;
-  background: rgba(15, 23, 42, 0.78);
-  border: 1.5px solid rgba(148, 163, 184, 0.3);
-  border-radius: 10px;
+  width: 254px;
+  background: rgba(15, 23, 42, 0.84);
+  border: 1.5px solid rgba(148, 163, 184, 0.32);
+  border-radius: 12px;
   padding: 10px 12px;
-  backdrop-filter: blur(6px);
+  backdrop-filter: blur(10px);
   color: #f8fafc;
-  pointer-events: none;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
 }
 
 .taskBarHeader {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 900;
   letter-spacing: 0.06em;
-  margin-bottom: 5px;
+  margin-bottom: 6px;
   color: #cbd5e1;
+}
+
+.taskPctTag {
+  color: #86efac;
+  font-family: monospace;
+  font-size: 0.8rem;
 }
 
 .taskBarTrack {
   width: 100%;
   height: 10px;
-  background: rgba(2, 6, 23, 0.85);
+  background: rgba(2, 6, 23, 0.88);
   border-radius: 999px;
   overflow: hidden;
-  border: 1px solid rgba(148, 163, 184, 0.3);
-  margin-bottom: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
 }
 
 .taskBarFill {
   height: 100%;
   background: linear-gradient(90deg, #22c55e, #4ade80);
+  box-shadow: 0 0 10px rgba(74, 222, 128, 0.5);
   transition: width 0.35s ease;
 }
 
 .taskListTitle {
-  font-size: 0.75rem;
-  font-weight: 800;
+  font-size: 0.76rem;
+  font-weight: 900;
   color: #38bdf8;
-  margin-bottom: 4px;
+  margin: 8px 0 4px;
+}
+
+.impTaskTitle {
+  color: #f87171;
 }
 
 .taskList {
@@ -194,7 +279,41 @@
 .taskDone {
   color: #86efac;
   text-decoration: line-through;
-  opacity: 0.8;
+  opacity: 0.78;
+}
+
+.controlsHintBar {
+  position: absolute;
+  bottom: 14px;
+  left: 14px;
+  z-index: 900;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 7px 12px;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.78);
+  border: 1px solid rgba(148, 163, 184, 0.26);
+  backdrop-filter: blur(8px);
+  color: #cbd5e1;
+  font-size: 0.74rem;
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.controlsHintBar b {
+  color: #fef08a;
+  font-family: monospace;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(30, 41, 59, 0.9);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  margin-right: 3px;
+}
+
+.impHint b {
+  color: #fca5a5;
+  border-color: rgba(248, 113, 113, 0.5);
 }
 
 .waitingFooter {
@@ -212,19 +331,20 @@
 
 .laptopShortcutBtn {
   padding: 10px 16px;
-  border-radius: 10px;
+  border-radius: 12px;
   border: 2px solid #4ecca3;
-  background: rgba(15, 23, 42, 0.88);
+  background: rgba(15, 23, 42, 0.9);
   color: #a7f3d0;
   font-weight: 800;
   font-size: 0.9rem;
   cursor: pointer;
-  backdrop-filter: blur(6px);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45);
 }
 
 .visBtn {
   padding: 10px 14px;
-  border-radius: 10px;
+  border-radius: 12px;
   border: 2px solid transparent;
   font-weight: 800;
   font-size: 0.85rem;
@@ -250,7 +370,7 @@
 
 .waitingPill {
   padding: 10px 22px;
-  background: rgba(15, 23, 42, 0.85);
+  background: rgba(15, 23, 42, 0.88);
   border: 1.5px solid rgba(148, 163, 184, 0.4);
   color: #e2e8f0;
   border-radius: 999px;

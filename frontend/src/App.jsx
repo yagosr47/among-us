@@ -11,11 +11,13 @@ import RoleReveal from './components/RoleReveal.jsx';
 import TaskModal from './components/TaskModal.jsx';
 import MiniMap from './components/MiniMap.jsx';
 import LaptopModal from './components/LaptopModal.jsx';
+import SettingsModal from './components/SettingsModal.jsx';
 import EndGame from './components/EndGame.jsx';
 import { EventBus } from './game/EventBus.js';
 import { ToastContainer } from './components/Toast.jsx';
 import { DEFAULT_ROOM_SETTINGS } from './game/skeldData.js';
 import { soundFX } from './utils/sound.js';
+import { loadHudPrefs, saveHudPrefs } from './utils/hudPrefs.js';
 
 const PAGES = { MENU: 'menu', WAITING: 'waiting', GAME: 'game', GAMEEND: 'gameend' };
 
@@ -37,6 +39,10 @@ function App() {
     const [laptopOpen, setLaptopOpen] = useState(false);
     const [laptopTab, setLaptopTab] = useState('settings');
     const [customError, setCustomError] = useState('');
+    const [settingsOpen, setSettingsOpen] = useState(false);
+    const [hudPrefs, setHudPrefs] = useState(() => loadHudPrefs());
+    const [rulesCollapsed, setRulesCollapsed] = useState(false);
+    const [tasksCollapsed, setTasksCollapsed] = useState(false);
 
     const [showRoleReveal, setShowRoleReveal] = useState(false);
     const [meetingBanner, setMeetingBanner] = useState(null);
@@ -52,8 +58,8 @@ function App() {
     const [taskSummary, setTaskSummary] = useState({ completed: 0, total: 0, ratio: 0 });
     const [hudInfo, setHudInfo] = useState({
         roomName: 'Cafeteria',
-        x: 560,
-        y: 118,
+        x: 1689,
+        y: 378,
         alive: true,
     });
     const [miniMapOpen, setMiniMapOpen] = useState(false);
@@ -435,8 +441,59 @@ function App() {
         setMeetingActive(false);
         setShowRoleReveal(false);
         setLaptopOpen(false);
+        setSettingsOpen(false);
+        EventBus.emit('settings:modal-state', false);
         setCurrentPage(PAGES.MENU);
     };
+
+    const handleToggleMute = useCallback((forcedState) => {
+        const next =
+            typeof forcedState === 'boolean' ? soundFX.setMuted(forcedState) : soundFX.toggleMute();
+        setMuted(next);
+        return next;
+    }, []);
+
+    const handleUpdateHudPrefs = useCallback((nextPrefs) => {
+        setHudPrefs(nextPrefs);
+        saveHudPrefs(nextPrefs);
+    }, []);
+
+    const openSettingsModal = useCallback(() => {
+        soundFX.playClick();
+        setSettingsOpen(true);
+        EventBus.emit('settings:modal-state', true);
+    }, []);
+
+    const closeSettingsModal = useCallback(() => {
+        setSettingsOpen(false);
+        EventBus.emit('settings:modal-state', false);
+    }, []);
+
+    // Escape key opens/closes Settings when no sub-modal or meeting is blocking
+    useEffect(() => {
+        if (currentPage !== PAGES.WAITING && currentPage !== PAGES.GAME) return;
+        const onKeyDown = (e) => {
+            if (e.key !== 'Escape') return;
+            const activeTag = document.activeElement?.tagName;
+            if (activeTag === 'INPUT' || activeTag === 'TEXTAREA') return;
+            if (activeTask || laptopOpen || miniMapOpen || meetingActive || showRoleReveal) return;
+            e.preventDefault();
+            if (settingsOpen) closeSettingsModal();
+            else openSettingsModal();
+        };
+        window.addEventListener('keydown', onKeyDown);
+        return () => window.removeEventListener('keydown', onKeyDown);
+    }, [
+        currentPage,
+        activeTask,
+        laptopOpen,
+        miniMapOpen,
+        meetingActive,
+        showRoleReveal,
+        settingsOpen,
+        openSettingsModal,
+        closeSettingsModal,
+    ]);
 
     const handleUpdateSettings = (patch) => {
         socket.emit('room:update-settings', {
@@ -554,12 +611,12 @@ function App() {
                     {/* Top Bar HUD */}
                     <div className={styles.topLeftBar}>
                         <button type="button" className={styles.backButton} onClick={handleBackToMenu}>
-                            Leave
+                            ← Leave
                         </button>
                         <button
                             type="button"
                             className={styles.muteBtn}
-                            onClick={() => setMuted(soundFX.toggleMute())}
+                            onClick={() => handleToggleMute()}
                             title={muted ? 'Unmute SFX' : 'Mute SFX'}
                         >
                             {muted ? '🔇' : '🔊'}
@@ -571,8 +628,15 @@ function App() {
                         onClick={handleCopyRoomCode}
                         title={roomMeta.isOffline ? 'Offline Bot Match' : 'Click to copy room code'}
                     >
+                        <span className={styles.liveDot} />
                         {roomMeta.isOffline ? (
-                            <span>🤖 OFFLINE VS BOTS • {playerCount}/10</span>
+                            currentPage === PAGES.GAME ? (
+                                <span>
+                                    {hudInfo.roomName} • 🤖 BOTS ({playerCount})
+                                </span>
+                            ) : (
+                                <span>🤖 OFFLINE VS BOTS • {playerCount}/10</span>
+                            )
                         ) : currentPage === PAGES.GAME ? (
                             <span>
                                 {hudInfo.roomName} • Room: {roomId}
@@ -584,34 +648,83 @@ function App() {
                         )}
                     </div>
 
+                    <div className={styles.topRightBar}>
+                        {currentPage === PAGES.GAME && (
+                            <button
+                                type="button"
+                                className={styles.mapToggleBtn}
+                                onClick={() => setMiniMapOpen((o) => !o)}
+                            >
+                                🗺️ Map [M]
+                            </button>
+                        )}
+                        {currentPage === PAGES.WAITING && (
+                            <button
+                                type="button"
+                                className={styles.quickColorBtn}
+                                onClick={() => {
+                                    soundFX.playClick();
+                                    setCustomError('');
+                                    setLaptopTab('customize');
+                                    setLaptopOpen(true);
+                                    EventBus.emit('laptop:modal-state', true);
+                                }}
+                            >
+                                🎨 Color
+                            </button>
+                        )}
+                        <button
+                            type="button"
+                            className={styles.settingsBtn}
+                            onClick={openSettingsModal}
+                            title="Settings & Controls [Esc]"
+                        >
+                            ⚙️ Settings
+                        </button>
+                    </div>
+
                     {currentPage === PAGES.WAITING && (
                         <>
-                            {/* Live Among Us Style Lobby Settings Card */}
-                            <div className={styles.lobbyRulesCard}>
-                                <div className={styles.lobbyRulesTitle}>
-                                    <span>⚙️ MATCH SETTINGS</span>
-                                    <span className={styles.lobbyMapBadge}>The Skeld</span>
-                                </div>
-                                <div className={styles.lobbyRulesList}>
-                                    <div>Impostors: <b>{roomSettings.impostorCount}</b></div>
-                                    <div>Confirm Ejects: <b>{roomSettings.confirmEjects ? 'On' : 'Off'}</b></div>
-                                    <div>Emergency Meetings: <b>{roomSettings.emergencyMeetings}</b></div>
-                                    <div>Emergency Cooldown: <b>{roomSettings.emergencyCooldownSec}s</b></div>
-                                    <div>Voting Time: <b>{roomSettings.meetingDurationSec}s</b></div>
-                                    <div>Anonymous Votes: <b>{roomSettings.anonymousVotes ? 'On' : 'Off'}</b></div>
-                                    <div>Player Speed: <b>{roomSettings.playerSpeed}x</b></div>
-                                    <div>Crewmate Vision: <b>{roomSettings.crewVision}x</b></div>
-                                    <div>Impostor Vision: <b>{roomSettings.impostorVision}x</b></div>
-                                    <div>Kill Cooldown: <b>{roomSettings.killCooldownSec}s</b></div>
-                                    <div>Kill Distance: <b>{String(roomSettings.killDistance).toUpperCase()}</b></div>
-                                    <div>Tasks: <b>{roomSettings.tasksPerPlayer}</b></div>
-                                    {roomMeta.isOffline && (
-                                        <div className={styles.botRuleHighlight}>
-                                            Bots: <b>{roomSettings.botCount} ({String(roomSettings.botDifficulty).toUpperCase()})</b>
+                            {/* Collapsible Among Us Style Lobby Settings Card */}
+                            {hudPrefs.showRulesCard && (
+                                <div className={styles.lobbyRulesCard}>
+                                    <div className={styles.lobbyRulesTitle}>
+                                        <span>⚙️ MATCH SETTINGS</span>
+                                        <div className={styles.cardHeaderRight}>
+                                            <span className={styles.lobbyMapBadge}>The Skeld</span>
+                                            <button
+                                                type="button"
+                                                className={styles.collapseBtn}
+                                                onClick={() => setRulesCollapsed((c) => !c)}
+                                                title={rulesCollapsed ? 'Expand' : 'Collapse'}
+                                            >
+                                                {rulesCollapsed ? '▾' : '▴'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                    {!rulesCollapsed && (
+                                        <div className={styles.lobbyRulesList}>
+                                            <div>Impostors: <b>{roomSettings.impostorCount}</b></div>
+                                            <div>Confirm Ejects: <b>{roomSettings.confirmEjects ? 'On' : 'Off'}</b></div>
+                                            <div>Emergency Meetings: <b>{roomSettings.emergencyMeetings}</b></div>
+                                            <div>Emergency Cooldown: <b>{roomSettings.emergencyCooldownSec}s</b></div>
+                                            <div>Voting Time: <b>{roomSettings.meetingDurationSec}s</b></div>
+                                            <div>Anonymous Votes: <b>{roomSettings.anonymousVotes ? 'On' : 'Off'}</b></div>
+                                            <div>Player Speed: <b>{roomSettings.playerSpeed}x</b></div>
+                                            <div>Crewmate Vision: <b>{roomSettings.crewVision}x</b></div>
+                                            <div>Impostor Vision: <b>{roomSettings.impostorVision}x</b></div>
+                                            <div>Kill Cooldown: <b>{roomSettings.killCooldownSec}s</b></div>
+                                            <div>Kill Distance: <b>{String(roomSettings.killDistance).toUpperCase()}</b></div>
+                                            <div>Tasks: <b>{roomSettings.tasksPerPlayer}</b></div>
+                                            {roomMeta.isOffline && (
+                                                <div className={styles.botRuleHighlight}>
+                                                    Bots: <b>{roomSettings.botCount} ({String(roomSettings.botDifficulty).toUpperCase()})</b>
+                                                </div>
+                                            )}
                                         </div>
                                     )}
                                 </div>
-                            </div>
+                            )}
 
                             <div className={styles.waitingFooter}>
                                 <button
@@ -625,7 +738,7 @@ function App() {
                                         EventBus.emit('laptop:modal-state', true);
                                     }}
                                 >
-                                    💻 {isLocalPlayerHost ? 'Settings / Color' : 'Customize / Rules'}
+                                    💻 {isLocalPlayerHost ? 'Match Rules / Color' : 'Customize / Rules'}
                                 </button>
 
                                 {isLocalPlayerHost && !roomMeta.isOffline && (
@@ -654,27 +767,33 @@ function App() {
                         </>
                     )}
 
-                    {currentPage === PAGES.GAME && (
-                        <>
-                            <button
-                                type="button"
-                                className={styles.mapToggleBtn}
-                                onClick={() => setMiniMapOpen((o) => !o)}
-                            >
-                                🗺️ Map [M]
-                            </button>
-
-                            <div className={styles.taskHud}>
-                                <div className={styles.taskBarHeader}>
-                                    <span>TOTAL TASKS</span>
-                                    <span>{taskPct}%</span>
+                    {currentPage === PAGES.GAME && hudPrefs.showTaskPanel && (
+                        <div className={styles.taskHud}>
+                            <div className={styles.taskBarHeader}>
+                                <span>TOTAL TASKS</span>
+                                <div className={styles.cardHeaderRight}>
+                                    <span className={styles.taskPctTag}>{taskPct}%</span>
+                                    <button
+                                        type="button"
+                                        className={styles.collapseBtn}
+                                        onClick={() => setTasksCollapsed((c) => !c)}
+                                        title={tasksCollapsed ? 'Expand Tasks' : 'Collapse Tasks'}
+                                    >
+                                        {tasksCollapsed ? '▾' : '▴'}
+                                    </button>
                                 </div>
-                                <div className={styles.taskBarTrack}>
-                                    <div className={styles.taskBarFill} style={{ width: `${taskPct}%` }} />
-                                </div>
+                            </div>
+                            <div className={styles.taskBarTrack}>
+                                <div className={styles.taskBarFill} style={{ width: `${taskPct}%` }} />
+                            </div>
+                            {!tasksCollapsed && (
                                 <div className={styles.taskList}>
-                                    <div className={styles.taskListTitle}>
-                                        {isLocalPlayerImposter ? 'Fake Tasks (Impostor)' : 'Your Tasks'}
+                                    <div
+                                        className={`${styles.taskListTitle} ${
+                                            isLocalPlayerImposter ? styles.impTaskTitle : ''
+                                        }`}
+                                    >
+                                        {isLocalPlayerImposter ? '🔪 Fake Tasks (Impostor)' : '🧑‍🚀 Your Tasks'}
                                         {!hudInfo.alive && ' • 👻 Ghost'}
                                     </div>
                                     {tasks.map((t) => (
@@ -691,8 +810,57 @@ function App() {
                                         </div>
                                     ))}
                                 </div>
-                            </div>
-                        </>
+                            )}
+                        </div>
+                    )}
+
+                    {hudPrefs.showControlsHint && (
+                        <div className={styles.controlsHintBar}>
+                            <span><b>WASD</b> Move</span>
+                            {currentPage === PAGES.WAITING ? (
+                                <>
+                                    <span><b>E</b> Laptop</span>
+                                    <span><b>C</b> Color</span>
+                                </>
+                            ) : (
+                                <>
+                                    <span><b>E</b> Use</span>
+                                    <span><b>R</b> Report</span>
+                                    <span><b>M</b> Map</span>
+                                    {isLocalPlayerImposter && (
+                                        <>
+                                            <span className={styles.impHint}><b>Q</b> Kill</span>
+                                            <span className={styles.impHint}><b>V</b> Vent</span>
+                                        </>
+                                    )}
+                                </>
+                            )}
+                            <span><b>Esc</b> Config</span>
+                        </div>
+                    )}
+
+                    {settingsOpen && (
+                        <SettingsModal
+                            mode={currentPage === PAGES.GAME ? 'game' : 'waiting'}
+                            muted={muted}
+                            onToggleMute={handleToggleMute}
+                            hudPrefs={hudPrefs}
+                            onUpdateHudPrefs={handleUpdateHudPrefs}
+                            roomSettings={roomSettings}
+                            isHost={isLocalPlayerHost}
+                            onOpenLaptopSettings={
+                                currentPage === PAGES.WAITING
+                                    ? () => {
+                                          setCustomError('');
+                                          setLaptopTab(isLocalPlayerHost ? 'settings' : 'customize');
+                                          setLaptopOpen(true);
+                                          EventBus.emit('laptop:modal-state', true);
+                                      }
+                                    : undefined
+                            }
+                            onLeaveRoom={handleBackToMenu}
+                            onClose={closeSettingsModal}
+                        />
                     )}
 
                     {laptopOpen && currentPage === PAGES.WAITING && (

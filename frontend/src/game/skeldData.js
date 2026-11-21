@@ -1,18 +1,29 @@
+export const MAP_DIMENSIONS = {
+    LOBBY_WIDTH: 1232,
+    LOBBY_HEIGHT: 1008,
+    SKELD_WIDTH: 3000,
+    SKELD_HEIGHT: 1680,
+};
+
 export const SKELD_CONSTANTS = {
-    KILL_RANGE: 95,
+    KILL_RANGE: 245,
     KILL_COOLDOWN_MS: 15000,
     INITIAL_KILL_COOLDOWN_MS: 10000,
-    REPORT_RANGE: 85,
-    EMERGENCY_RANGE: 75,
-    TASK_RANGE: 55,
-    VENT_RANGE: 48,
+    REPORT_RANGE: 215,
+    EMERGENCY_RANGE: 165,
+    TASK_RANGE: 125,
+    VENT_RANGE: 105,
     LAPTOP_RANGE: 135,
+    CREW_BASE_VISION: 215,
+    IMPOSTOR_BASE_VISION: 255,
+    BASE_SPEED_LOBBY: 300,
+    BASE_SPEED_SKELD: 215,
 };
 
 export const KILL_DISTANCE_MAP = {
-    short: 70,
-    medium: 95,
-    long: 125,
+    short: 175,
+    medium: 255,
+    long: 345,
 };
 
 export const REGION_OPTIONS = [
@@ -88,62 +99,62 @@ export function sanitizeRoomSettings(patch = {}, current = DEFAULT_ROOM_SETTINGS
     };
 }
 
-export const LOBBY_LAPTOP_POS = { x: 645, y: 385 };
+export const LOBBY_LAPTOP_POS = { x: 645, y: 395 };
 
 export const LOBBY_SPAWNS = [
-    { x: 460, y: 300 },
-    { x: 520, y: 300 },
-    { x: 720, y: 300 },
-    { x: 460, y: 520 },
-    { x: 560, y: 520 },
-    { x: 680, y: 520 },
-    { x: 760, y: 520 },
-    { x: 520, y: 420 },
-    { x: 720, y: 420 },
-    { x: 615, y: 540 },
+    { x: 475, y: 415 },
+    { x: 765, y: 415 },
+    { x: 445, y: 515 },
+    { x: 795, y: 515 },
+    { x: 560, y: 540 },
+    { x: 680, y: 540 },
+    { x: 515, y: 345 },
+    { x: 725, y: 345 },
+    { x: 395, y: 455 },
+    { x: 835, y: 455 },
 ];
+
+export const EMERGENCY_BUTTON_POS = { x: 1689, y: 378 };
 
 export const CAFETERIA_SPAWNS = [
-    { x: 535, y: 92 },
-    { x: 590, y: 92 },
-    { x: 602, y: 118 },
-    { x: 590, y: 145 },
-    { x: 535, y: 145 },
-    { x: 522, y: 118 },
-    { x: 560, y: 78 },
-    { x: 560, y: 162 },
-    { x: 495, y: 115 },
-    { x: 630, y: 115 },
+    { x: 1689, y: 275 },
+    { x: 1790, y: 300 },
+    { x: 1835, y: 378 },
+    { x: 1790, y: 460 },
+    { x: 1689, y: 490 },
+    { x: 1588, y: 460 },
+    { x: 1540, y: 378 },
+    { x: 1588, y: 300 },
+    { x: 1635, y: 285 },
+    { x: 1745, y: 285 },
 ];
 
-export const EMERGENCY_BUTTON_POS = { x: 563, y: 118 };
-
 export const SKELD_TASKS = [
-    { id: 'admin-card', type: 'swipeCard', title: 'Swipe Card', room: 'Admin', x: 676, y: 300 },
-    { id: 'medbay-scan', type: 'medbayScan', title: 'Submit Scan', room: 'MedBay', x: 424, y: 224 },
-    { id: 'electrical-wires', type: 'fixWiring', title: 'Fix Wiring', room: 'Electrical', x: 408, y: 352 },
-    { id: 'weapons-asteroids', type: 'asteroids', title: 'Clear Asteroids', room: 'Weapons', x: 766, y: 98 },
-    { id: 'reactor-manifolds', type: 'manifolds', title: 'Unlock Manifolds', room: 'Reactor', x: 108, y: 224 },
-    { id: 'cafeteria-garbage', type: 'garbage', title: 'Empty Chute', room: 'Cafeteria', x: 640, y: 48 },
-    { id: 'shields-prime', type: 'shields', title: 'Prime Shields', room: 'Shields', x: 770, y: 384 },
-    { id: 'nav-chart', type: 'chartCourse', title: 'Chart Course', room: 'Navigation', x: 942, y: 232 },
+    { id: 'admin-card', type: 'swipeCard', title: 'Swipe Card', room: 'Admin', x: 2115, y: 985 },
+    { id: 'medbay-scan', type: 'medbayScan', title: 'Submit Scan', room: 'MedBay', x: 1200, y: 774 },
+    { id: 'electrical-wires', type: 'fixWiring', title: 'Fix Wiring', room: 'Electrical', x: 1146, y: 1056 },
+    { id: 'weapons-asteroids', type: 'asteroids', title: 'Clear Asteroids', room: 'Weapons', x: 2310, y: 390 },
+    { id: 'reactor-manifolds', type: 'manifolds', title: 'Unlock Manifolds', room: 'Reactor', x: 384, y: 630 },
+    { id: 'cafeteria-garbage', type: 'garbage', title: 'Empty Chute', room: 'Cafeteria', x: 1920, y: 150 },
+    { id: 'shields-prime', type: 'shields', title: 'Prime Shields', room: 'Shields', x: 2370, y: 1265 },
+    { id: 'nav-chart', type: 'chartCourse', title: 'Chart Course', room: 'Navigation', x: 2814, y: 726 },
 ];
 
 export const SKELD_ROOMS = [
-    { name: 'Cafeteria', x1: 440, y1: 15, x2: 695, y2: 220 },
-    { name: 'Weapons', x1: 710, y1: 35, x2: 830, y2: 145 },
-    { name: 'O2', x1: 655, y1: 155, x2: 755, y2: 245 },
-    { name: 'Navigation', x1: 880, y1: 175, x2: 990, y2: 295 },
-    { name: 'Shields', x1: 715, y1: 325, x2: 835, y2: 455 },
-    { name: 'Communications', x1: 605, y1: 390, x2: 715, y2: 505 },
-    { name: 'Storage', x1: 465, y1: 280, x2: 590, y2: 495 },
-    { name: 'Admin', x1: 595, y1: 245, x2: 725, y2: 345 },
-    { name: 'Electrical', x1: 360, y1: 255, x2: 460, y2: 395 },
-    { name: 'Lower Engine', x1: 135, y1: 300, x2: 260, y2: 430 },
-    { name: 'Security', x1: 265, y1: 175, x2: 345, y2: 290 },
-    { name: 'Reactor', x1: 70, y1: 150, x2: 170, y2: 320 },
-    { name: 'Upper Engine', x1: 135, y1: 55, x2: 260, y2: 175 },
-    { name: 'MedBay', x1: 340, y1: 130, x2: 450, y2: 245 },
+    { name: 'Cafeteria', x1: 1350, y1: 70, x2: 2080, y2: 715 },
+    { name: 'Weapons', x1: 2235, y1: 150, x2: 2510, y2: 490 },
+    { name: 'O2', x1: 1945, y1: 530, x2: 2265, y2: 735 },
+    { name: 'Navigation', x1: 2700, y1: 615, x2: 2930, y2: 850 },
+    { name: 'Shields', x1: 2265, y1: 1040, x2: 2510, y2: 1355 },
+    { name: 'Communications', x1: 1840, y1: 1340, x2: 2160, y2: 1530 },
+    { name: 'Storage', x1: 1410, y1: 985, x2: 1800, y2: 1530 },
+    { name: 'Admin', x1: 1905, y1: 865, x2: 2170, y2: 1085 },
+    { name: 'Electrical', x1: 1065, y1: 1005, x2: 1365, y2: 1290 },
+    { name: 'Lower Engine', x1: 445, y1: 995, x2: 775, y2: 1320 },
+    { name: 'Security', x1: 815, y1: 600, x2: 1000, y2: 890 },
+    { name: 'Reactor', x1: 265, y1: 520, x2: 485, y2: 1000 },
+    { name: 'Upper Engine', x1: 445, y1: 210, x2: 775, y2: 525 },
+    { name: 'MedBay', x1: 1020, y1: 480, x2: 1345, y2: 820 },
 ];
 
 export function getRoomNameAt(x, y) {
@@ -154,17 +165,17 @@ export function getRoomNameAt(x, y) {
 }
 
 export const SKELD_VENTS = [
-    { id: 'vent-cafeteria', label: 'Cafeteria', x: 656, y: 175, targets: ['vent-admin', 'vent-hall'] },
-    { id: 'vent-admin', label: 'Admin', x: 646, y: 290, targets: ['vent-cafeteria', 'vent-hall'] },
-    { id: 'vent-hall', label: 'Corridor', x: 568, y: 232, targets: ['vent-cafeteria', 'vent-admin'] },
-    { id: 'vent-medbay', label: 'MedBay', x: 360, y: 224, targets: ['vent-security', 'vent-elec'] },
-    { id: 'vent-security', label: 'Security', x: 314, y: 260, targets: ['vent-medbay', 'vent-elec'] },
-    { id: 'vent-elec', label: 'Electrical', x: 392, y: 344, targets: ['vent-medbay', 'vent-security'] },
-    { id: 'vent-upper-eng', label: 'Upper Engine', x: 182, y: 86, targets: ['vent-reactor-top'] },
-    { id: 'vent-reactor-top', label: 'Reactor (N)', x: 122, y: 206, targets: ['vent-upper-eng'] },
-    { id: 'vent-lower-eng', label: 'Lower Engine', x: 195, y: 344, targets: ['vent-reactor-bot'] },
-    { id: 'vent-reactor-bot', label: 'Reactor (S)', x: 122, y: 274, targets: ['vent-lower-eng'] },
-    { id: 'vent-weapons', label: 'Weapons', x: 754, y: 72, targets: ['vent-nav'] },
-    { id: 'vent-nav', label: 'Navigation', x: 924, y: 214, targets: ['vent-weapons', 'vent-shields'] },
-    { id: 'vent-shields', label: 'Shields', x: 760, y: 412, targets: ['vent-nav'] },
+    { id: 'vent-cafeteria', label: 'Cafeteria', x: 1998, y: 495, targets: ['vent-admin', 'vent-hall'] },
+    { id: 'vent-admin', label: 'Admin', x: 1950, y: 1035, targets: ['vent-cafeteria', 'vent-hall'] },
+    { id: 'vent-hall', label: 'Corridor', x: 1700, y: 810, targets: ['vent-cafeteria', 'vent-admin'] },
+    { id: 'vent-medbay', label: 'MedBay', x: 1080, y: 774, targets: ['vent-security', 'vent-elec'] },
+    { id: 'vent-security', label: 'Security', x: 870, y: 825, targets: ['vent-medbay', 'vent-elec'] },
+    { id: 'vent-elec', label: 'Electrical', x: 1110, y: 1056, targets: ['vent-medbay', 'vent-security'] },
+    { id: 'vent-upper-eng', label: 'Upper Engine', x: 675, y: 255, targets: ['vent-reactor-top'] },
+    { id: 'vent-reactor-top', label: 'Reactor (N)', x: 390, y: 575, targets: ['vent-upper-eng'] },
+    { id: 'vent-lower-eng', label: 'Lower Engine', x: 675, y: 1275, targets: ['vent-reactor-bot'] },
+    { id: 'vent-reactor-bot', label: 'Reactor (S)', x: 390, y: 935, targets: ['vent-lower-eng'] },
+    { id: 'vent-weapons', label: 'Weapons', x: 2310, y: 210, targets: ['vent-nav'] },
+    { id: 'vent-nav', label: 'Navigation', x: 2745, y: 660, targets: ['vent-weapons', 'vent-shields'] },
+    { id: 'vent-shields', label: 'Shields', x: 2370, y: 1295, targets: ['vent-nav'] },
 ];

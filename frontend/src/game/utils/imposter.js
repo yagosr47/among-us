@@ -162,21 +162,22 @@ export function showVentTargets(scene, currentVent) {
         if (!target) return;
 
         const angle = Phaser.Math.Angle.Between(currentVent.x, currentVent.y, target.x, target.y);
-        const bx = currentVent.x + Math.cos(angle) * 26;
-        const by = currentVent.y + Math.sin(angle) * 26;
+        const bx = currentVent.x + Math.cos(angle) * 48;
+        const by = currentVent.y + Math.sin(angle) * 48;
 
         const container = scene.add.container(bx, by).setDepth(700);
-        const bg = scene.add.circle(0, 0, 10, 0x38bdf8, 0.9).setStrokeStyle(1.5, 0xffffff);
+        const bg = scene.add.circle(0, 0, 16, 0x38bdf8, 0.92).setStrokeStyle(2, 0xffffff);
         const arrow = scene.add
-            .text(0, 0, '➤', { fontSize: '11px', color: '#0f172a', fontStyle: 'bold' })
+            .text(0, 0, '➤', { fontSize: '16px', color: '#0f172a', fontStyle: 'bold' })
             .setOrigin(0.5)
             .setRotation(angle);
         const label = scene.add
-            .text(0, 14, target.label, {
-                fontSize: '7px',
+            .text(0, 22, target.label, {
+                fontSize: '11px',
+                fontStyle: 'bold',
                 color: '#e0f2fe',
                 stroke: '#000',
-                strokeThickness: 2,
+                strokeThickness: 3,
             })
             .setOrigin(0.5);
 
@@ -246,8 +247,8 @@ export function handleImposterMovement(scene) {
         scene.targetRing.clear();
         if (best && !scene.player.inVent && !scene.meetingActive) {
             const pulse = 1 + Math.sin(scene.time.now * 0.01) * 0.12;
-            scene.targetRing.lineStyle(2, 0xff2b2b, 0.9);
-            scene.targetRing.strokeCircle(best.x, best.y + 2, 14 * pulse);
+            scene.targetRing.lineStyle(3, 0xff2b2b, 0.92);
+            scene.targetRing.strokeCircle(best.x, best.y + 4, 24 * pulse);
         }
     }
 
