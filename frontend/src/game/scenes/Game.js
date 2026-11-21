@@ -18,6 +18,7 @@ export class Game extends BaseGameScene {
         super.init(data);
         this._roleApplied = false;
         this.imposter = Boolean(data?.isImposter);
+        this.fellowImposterIds = new Set();
         this.tasks = Array.isArray(data?.tasks) ? data.tasks : [];
         this.initialCooldownMs = data?.initialCooldownMs || 10000;
         this.deadBodiesMap = {};
@@ -25,6 +26,8 @@ export class Game extends BaseGameScene {
         this.meetingActive = false;
         this._lastHudEmitAt = 0;
         this._lastRoomName = '';
+        this.emergencyCallsLeft = this.room?.settings?.emergencyMeetings ?? 1;
+        this.lastEmergencyAt = Date.now();
     }
 
     getMapConfig() {
@@ -61,6 +64,10 @@ export class Game extends BaseGameScene {
 
         await this.createCommon();
         this.socket = socketService.getSocket();
+        if (this.room?.settings) {
+            this.emergencyCallsLeft = this.room.settings.emergencyMeetings ?? 1;
+        }
+        this.lastEmergencyAt = Date.now();
 
         this.createGameAnimations();
         this.setupActionButtons();
@@ -74,6 +81,7 @@ export class Game extends BaseGameScene {
             this.applyRoleData({
                 isImposter: this.config.isImposter,
                 tasks: this.config.tasks || [],
+                fellowImposters: this.config.fellowImposters || [],
             });
         } else {
             EventBus.emit('game:ready-for-role');
@@ -82,19 +90,34 @@ export class Game extends BaseGameScene {
         setupVisionSystem(this);
     }
 
-    applyRoleData({ isImposter, tasks }) {
+    applyRoleData({ isImposter, tasks, fellowImposters = [] }) {
         if (this._roleApplied) return;
         this._roleApplied = true;
         this.imposter = Boolean(isImposter);
         if (Array.isArray(tasks)) {
             this.tasks = tasks;
         }
+        this.fellowImposterIds = new Set((fellowImposters || []).map((f) => f.id));
+
+        // Color fellow impostors' nameplates red for impostor players
+        if (this.imposter) {
+            this.fellowImposterIds.forEach((fid) => {
+                const sprite = fid === this.playerObj?.id ? this.player : this.players[fid];
+                if (sprite?.nameTag) {
+                    sprite.nameTag.setColor('#ff4d4d');
+                }
+            });
+        }
+
         this.renderTaskMarkers();
         if (this.imposter && !this.killBtn) {
             handleImposter(this);
         }
         if (this.player) {
-            this.VISION_RADIUS = this.imposter ? 140 : 108;
+            const settings = this.room?.settings || {};
+            const crewMult = settings.crewVision || 1.0;
+            const impMult = settings.impostorVision || 1.25;
+            this.VISION_RADIUS = this.imposter ? Math.round(112 * impMult) : Math.round(108 * crewMult);
         }
     }
 
@@ -393,6 +416,10 @@ export class Game extends BaseGameScene {
             }
             disableVisionSystem(this);
 
+            if (data.type === 'emergency' && data.callerId === this.playerObj?.id) {
+                this.emergencyCallsLeft = Math.max(0, (this.emergencyCallsLeft ?? 1) - 1);
+            }
+
             if (data.type === 'body') soundFX.playReport();
             else soundFX.playEmergency();
 
@@ -423,17 +450,22 @@ export class Game extends BaseGameScene {
 
             // Apply ejection state & convert ejected player into Ghost
             const ejectedId = data.results?.ejectedId;
-            if (ejectedId && this.players[ejectedId]) {
-                convertToGhost(this, this.players[ejectedId]);
+            if (ejectedId) {
+                const ejectedSprite = ejectedId === this.playerObj?.id ? this.player : this.players[ejectedId];
+                if (ejectedSprite) {
+                    convertToGhost(this, ejectedSprite);
+                }
                 if (this.room?.players?.[ejectedId]) {
                     this.room.players[ejectedId].isAlive = false;
                 }
             }
 
-            // Reset cooldown & teleport players back around Cafeteria table
+            // Reset cooldowns & teleport players back around Cafeteria table
+            const cdSec = this.room?.settings?.killCooldownSec || 15;
             if (this.imposter) {
-                this.killCooldownEndsAt = Date.now() + SKELD_CONSTANTS.KILL_COOLDOWN_MS;
+                this.killCooldownEndsAt = Date.now() + cdSec * 1000;
             }
+            this.lastEmergencyAt = Date.now();
             this.teleportPlayersFromRoom(data.room?.players);
             enableVisionSystem(this);
 
@@ -526,6 +558,12 @@ export class Game extends BaseGameScene {
         return d <= SKELD_CONSTANTS.EMERGENCY_RANGE;
     }
 
+    getEmergencyCooldownRemainingSec() {
+        const cdSec = this.room?.settings?.emergencyCooldownSec ?? 15;
+        const leftMs = Math.max(0, this.lastEmergencyAt + cdSec * 1000 - Date.now());
+        return Math.ceil(leftMs / 1000);
+    }
+
     handleUseAction() {
         if (!this.player || this.meetingActive || this.taskModalOpen || this.player.inVent) return;
 
@@ -537,6 +575,15 @@ export class Game extends BaseGameScene {
         }
 
         if (this.isNearEmergencyButton() && this.player.alive) {
+            if ((this.emergencyCallsLeft ?? 0) <= 0) {
+                window.showToast?.('No emergency meetings remaining!', 'info', 2000);
+                return;
+            }
+            const cdLeft = this.getEmergencyCooldownRemainingSec();
+            if (cdLeft > 0) {
+                window.showToast?.(`Emergency cooldown: ${cdLeft}s remaining`, 'info', 2000);
+                return;
+            }
             this.socket.emit('meeting:start', {
                 roomId: this.roomId,
                 type: 'emergency',
@@ -560,8 +607,11 @@ export class Game extends BaseGameScene {
         const nearestTask = this.findNearestTask();
         const nearEmergency = this.isNearEmergencyButton();
         const nearestBody = this.findNearestDeadBody();
+        const emergencyCd = this.getEmergencyCooldownRemainingSec();
+        const hasEmergencies = (this.emergencyCallsLeft ?? 0) > 0;
 
-        const canUse = Boolean((nearestTask || nearEmergency) && !this.player?.inVent);
+        const canEmergency = nearEmergency && hasEmergencies && emergencyCd === 0;
+        const canUse = Boolean((nearestTask || canEmergency) && !this.player?.inVent);
         const canReport = Boolean(nearestBody && this.player?.alive && !this.player?.inVent);
 
         if (this.useBtn) {
@@ -570,7 +620,15 @@ export class Game extends BaseGameScene {
                 if (canUse) this.useBtn.resetPipeline();
                 else if (this.useBtn.pipeline?.name !== 'GrayScale') this.useBtn.setPipeline('GrayScale');
             }
-            this.useHintText.setText(nearestTask ? '[E] TASK' : nearEmergency ? '[E] MEETING' : '[E] USE');
+            if (nearestTask) {
+                this.useHintText.setText('[E] TASK');
+            } else if (nearEmergency) {
+                if (!hasEmergencies) this.useHintText.setText('NO CALLS LEFT');
+                else if (emergencyCd > 0) this.useHintText.setText(`[E] WAIT ${emergencyCd}s`);
+                else this.useHintText.setText(`[E] MEETING (${this.emergencyCallsLeft})`);
+            } else {
+                this.useHintText.setText('[E] USE');
+            }
         }
 
         if (this.reportBtn) {
@@ -593,9 +651,13 @@ export class Game extends BaseGameScene {
         handleImposterMovement(this);
         this.updateActionButtonsState();
 
-        if (Phaser.Input.Keyboard.JustDown(this.eKey)) this.handleUseAction();
-        if (Phaser.Input.Keyboard.JustDown(this.rKey)) this.handleReportAction();
-        if (Phaser.Input.Keyboard.JustDown(this.mKey)) EventBus.emit('minimap:toggle');
+        const activeTag = document.activeElement?.tagName;
+        const typing = activeTag === 'INPUT' || activeTag === 'TEXTAREA';
+        if (!typing) {
+            if (Phaser.Input.Keyboard.JustDown(this.eKey)) this.handleUseAction();
+            if (Phaser.Input.Keyboard.JustDown(this.rKey)) this.handleReportAction();
+            if (Phaser.Input.Keyboard.JustDown(this.mKey)) EventBus.emit('minimap:toggle');
+        }
 
         if (this.visionEnabled) {
             updateVisionSystem(this);

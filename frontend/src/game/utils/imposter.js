@@ -1,6 +1,16 @@
 import Phaser from 'phaser';
-import { SKELD_CONSTANTS, SKELD_VENTS } from '../skeldData.js';
+import { KILL_DISTANCE_MAP, SKELD_CONSTANTS, SKELD_VENTS } from '../skeldData.js';
 import { soundFX } from '../../utils/sound.js';
+
+function getRoomKillRange(scene) {
+    const distKey = scene.room?.settings?.killDistance || 'medium';
+    return KILL_DISTANCE_MAP[distKey] || SKELD_CONSTANTS.KILL_RANGE;
+}
+
+function getRoomKillCooldownMs(scene) {
+    const sec = scene.room?.settings?.killCooldownSec || 15;
+    return sec * 1000;
+}
 
 /**
  * Initialize imposter-specific UI, cooldown radial, target highlight, and venting.
@@ -8,11 +18,11 @@ import { soundFX } from '../../utils/sound.js';
 export function handleImposter(scene) {
     if (!scene.imposter || !scene.player) return;
 
-    const KILL_RANGE = SKELD_CONSTANTS.KILL_RANGE;
-    const VENT_RANGE = SKELD_CONSTANTS.VENT_RANGE;
+    const killRange = getRoomKillRange(scene);
+    const cooldownMs = getRoomKillCooldownMs(scene);
 
-    scene.killCooldownEndsAt = Date.now() + (scene.initialCooldownMs || 10000);
-    scene.closest = { player: null, distance: KILL_RANGE };
+    scene.killCooldownEndsAt = Date.now() + (scene.initialCooldownMs || Math.min(10000, cooldownMs));
+    scene.closest = { player: null, distance: killRange };
     scene.nearestVent = null;
     scene.ventTargetButtons = [];
 
@@ -101,8 +111,8 @@ export function handleImposter(scene) {
             targetId: victim.id,
         });
 
-        scene.killCooldownEndsAt = Date.now() + SKELD_CONSTANTS.KILL_COOLDOWN_MS;
-        scene.closest = { player: null, distance: KILL_RANGE };
+        scene.killCooldownEndsAt = Date.now() + getRoomKillCooldownMs(scene);
+        scene.closest = { player: null, distance: getRoomKillRange(scene) };
     };
 
     const toggleVent = () => {
@@ -206,17 +216,23 @@ export function handleImposterMovement(scene) {
         return;
     }
 
-    if (scene.qKey && Phaser.Input.Keyboard.JustDown(scene.qKey)) scene.triggerImposterKill?.();
-    if (scene.kKey && Phaser.Input.Keyboard.JustDown(scene.kKey)) scene.triggerImposterKill?.();
-    if (scene.vKey && Phaser.Input.Keyboard.JustDown(scene.vKey)) scene.toggleImposterVent?.();
+    const activeTag = document.activeElement?.tagName;
+    const typing = activeTag === 'INPUT' || activeTag === 'TEXTAREA';
+    if (!typing) {
+        if (scene.qKey && Phaser.Input.Keyboard.JustDown(scene.qKey)) scene.triggerImposterKill?.();
+        if (scene.kKey && Phaser.Input.Keyboard.JustDown(scene.kKey)) scene.triggerImposterKill?.();
+        if (scene.vKey && Phaser.Input.Keyboard.JustDown(scene.vKey)) scene.toggleImposterVent?.();
+    }
 
-    // Find nearest alive crewmate within kill range
-    const KILL_RANGE = SKELD_CONSTANTS.KILL_RANGE;
+    // Find nearest alive crewmate (never target fellow impostor) within room killDistance
+    const killRange = getRoomKillRange(scene);
+    const fellowSet = scene.fellowImposterIds || new Set();
     let best = null;
-    let bestDist = KILL_RANGE;
+    let bestDist = killRange;
 
     Object.values(scene.players).forEach((p) => {
         if (!p || p === scene.player || !p.alive || p.inVent) return;
+        if (fellowSet.has(p.id)) return;
         const d = Phaser.Math.Distance.Between(scene.player.x, scene.player.y, p.x, p.y);
         if (d <= bestDist) {
             bestDist = d;

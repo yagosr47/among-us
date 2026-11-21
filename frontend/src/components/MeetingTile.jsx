@@ -12,6 +12,7 @@ export default function MeetingTile({
     canVote,
     isSelected,
     voters = [],
+    anonymousCount = 0,
     onSelect,
     onConfirm,
     onCancel,
@@ -42,17 +43,27 @@ export default function MeetingTile({
                         {isCaller && <span className={styles.callerTag}>📣</span>}
                     </div>
 
-                    {voters.length > 0 && (
+                    {(voters.length > 0 || anonymousCount > 0) && (
                         <div className={styles.votesContainer}>
-                            {voters.map((voter) => (
-                                <span
-                                    key={voter.id}
-                                    className={styles.votePip}
-                                    title={voter.name}
-                                >
-                                    <CrewmateAvatar color={voter.color} size={18} />
-                                </span>
-                            ))}
+                            {voters.length > 0
+                                ? voters.map((voter) => (
+                                      <span
+                                          key={voter.id}
+                                          className={styles.votePip}
+                                          title={voter.name}
+                                      >
+                                          <CrewmateAvatar color={voter.color} size={18} />
+                                      </span>
+                                  ))
+                                : Array.from({ length: anonymousCount }).map((_, idx) => (
+                                      <span
+                                          key={idx}
+                                          className={styles.votePip}
+                                          title="Anonymous vote"
+                                      >
+                                          <CrewmateAvatar color="#94a3b8" size={18} />
+                                      </span>
+                                  ))}
                         </div>
                     )}
                 </div>

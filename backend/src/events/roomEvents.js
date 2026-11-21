@@ -1,9 +1,34 @@
 import { PlayersManager } from "../managers/players.manager.js";
-import { RoomsManager, serializePlayer, serializeRoom } from "../managers/rooms.manager.js";
-import { GAME_CONSTANTS } from "../config/skeldData.js";
+import {
+    RoomsManager,
+    getImposterIds,
+    serializePlayer,
+    serializeRoom,
+} from "../managers/rooms.manager.js";
+import { DEFAULT_ROOM_SETTINGS, GAME_CONSTANTS } from "../config/skeldData.js";
 
 /** @type {Record<string, string>} */
 const socketToPlayerId = {};
+
+/**
+ * Helper to build win payload including all impostors
+ * @param {import('../types/room.type.js').GameRoom} room
+ * @param {{ winner: string, isImposter: boolean, reason: string }} win
+ */
+export function buildGameEndedPayload(room, win) {
+    const imposterIds = getImposterIds(room);
+    const imposterNames = imposterIds
+        .map((id) => room.players[id]?.name)
+        .filter(Boolean);
+    return {
+        roomId: room.id,
+        ...win,
+        imposterId: imposterIds[0] || null,
+        imposterName: imposterNames[0] || null,
+        imposters: imposterIds,
+        imposterNames,
+    };
+}
 
 /**
  * Helper to clean up a player leaving/disconnecting from their room
@@ -30,12 +55,7 @@ function leaveCurrentRoom(io, socket, playerId, deletePlayer = false) {
         if (!deleted && room) {
             const win = RoomsManager.checkWin(roomId);
             if (win !== null) {
-                io.to(roomId).emit("game:ended", {
-                    roomId,
-                    ...win,
-                    imposterId: room.imposter,
-                    imposterName: room.imposter ? room.players[room.imposter]?.name : null,
-                });
+                io.to(roomId).emit("game:ended", buildGameEndedPayload(room, win));
             }
             io.emit("room:updated", { room: serializeRoom(room) });
         }
@@ -79,7 +99,7 @@ export const registerRoomEvents = (io, socket) => {
     };
 
     /**
-     * @param {{ hostId?: string, roomId: string }} data
+     * @param {{ hostId?: string, roomId: string, name?: string, isPublic?: boolean, region?: string, settings?: Record<string, any> }} data
      */
     const roomCreate = (data) => {
         const hostId = socket.data.playerId || data?.hostId;
@@ -92,7 +112,12 @@ export const registerRoomEvents = (io, socket) => {
             return;
         }
 
-        const room = RoomsManager.createRoom(roomId, player);
+        const room = RoomsManager.createRoom(roomId, player, {
+            name: data?.name,
+            isPublic: data?.isPublic,
+            region: data?.region,
+            settings: data?.settings,
+        });
         if (!room) {
             socket.emit("room:join:error", { message: "Room ID already exists. Try again." });
             return;
@@ -107,7 +132,7 @@ export const registerRoomEvents = (io, socket) => {
      */
     const roomJoin = (data) => {
         const playerId = socket.data.playerId || data?.playerId;
-        const roomId = data?.roomId;
+        const roomId = String(data?.roomId || "").trim().toUpperCase();
         if (!playerId || !roomId) {
             socket.emit("room:join:error", { message: "Missing playerId or roomId" });
             return;
@@ -177,6 +202,78 @@ export const registerRoomEvents = (io, socket) => {
         leaveCurrentRoom(io, socket, playerId, false);
     };
 
+    const roomUpdateSettings = (data) => {
+        const playerId = socket.data.playerId;
+        const roomId = data?.roomId;
+        const room = RoomsManager.fetchRoom(roomId);
+        if (!room) return;
+        if (room.started) {
+            socket.emit("game:notif", { message: "Cannot change settings after the game starts" });
+            return;
+        }
+        if (!playerId || room.host?.id !== playerId) {
+            socket.emit("game:notif", { message: "Only the room host can edit game settings" });
+            return;
+        }
+
+        const updatedSettings = RoomsManager.updateSettings(roomId, data?.settings || {});
+        if (!updatedSettings) return;
+
+        const safeRoom = serializeRoom(room);
+        io.to(roomId).emit("room:settings:updated", {
+            roomId,
+            settings: updatedSettings,
+            room: safeRoom,
+        });
+        io.emit("room:updated", { room: safeRoom });
+    };
+
+    const roomUpdateMeta = (data) => {
+        const playerId = socket.data.playerId;
+        const roomId = data?.roomId;
+        const room = RoomsManager.fetchRoom(roomId);
+        if (!room || room.started) return;
+        if (!playerId || room.host?.id !== playerId) {
+            socket.emit("game:notif", { message: "Only the host can change lobby visibility" });
+            return;
+        }
+
+        RoomsManager.updateMeta(roomId, {
+            isPublic: data?.isPublic,
+            region: data?.region,
+            name: data?.name,
+        });
+
+        const safeRoom = serializeRoom(room);
+        io.to(roomId).emit("room:meta:updated", { roomId, room: safeRoom });
+        io.emit("room:updated", { room: safeRoom });
+    };
+
+    const playerCustomize = (data) => {
+        const playerId = socket.data.playerId;
+        const roomId = data?.roomId;
+        if (!playerId || !roomId) return;
+
+        const res = RoomsManager.customizePlayer(roomId, playerId, {
+            name: data?.name,
+            color: data?.color,
+        });
+        if (!res.ok) {
+            socket.emit("player:customize:error", { message: res.message });
+            return;
+        }
+
+        const room = RoomsManager.fetchRoom(roomId);
+        const safeRoom = serializeRoom(room);
+        const safePlayer = serializePlayer(res.player);
+        io.to(roomId).emit("player:customized", {
+            roomId,
+            player: safePlayer,
+            room: safeRoom,
+        });
+        io.emit("room:updated", { room: safeRoom });
+    };
+
     const gameStart = (data) => {
         const playerId = socket.data.playerId;
         const roomId = data?.roomId;
@@ -196,20 +293,35 @@ export const registerRoomEvents = (io, socket) => {
 
         RoomsManager.startGame(roomId);
         const safeRoom = serializeRoom(room);
+        const settings = room.settings || DEFAULT_ROOM_SETTINGS;
+        const killCooldownMs = settings.killCooldownSec * 1000;
+        const initialCooldownMs = Math.min(GAME_CONSTANTS.INITIAL_KILL_COOLDOWN_MS, killCooldownMs);
+
+        const imposterIds = getImposterIds(room);
+        const imposterSet = new Set(imposterIds);
+        const allImposterCards = imposterIds
+            .map((id) => room.players[id])
+            .filter(Boolean)
+            .map((p) => ({ id: p.id, name: p.name, color: p.color }));
 
         io.to(roomId).emit("game:started", {
             roomId,
             room: safeRoom,
-            killCooldownMs: GAME_CONSTANTS.KILL_COOLDOWN_MS,
-            initialCooldownMs: GAME_CONSTANTS.INITIAL_KILL_COOLDOWN_MS,
+            settings,
+            impostorCount: imposterIds.length,
+            killCooldownMs,
+            initialCooldownMs,
         });
 
         // Deliver private role & task list individually to each player's socket
         Object.values(room.players).forEach((p) => {
             if (p.socketId) {
+                const isImp = imposterSet.has(p.id);
                 io.to(p.socketId).emit("game:role", {
                     roomId,
-                    isImposter: p.id === room.imposter,
+                    isImposter: isImp,
+                    impostorCount: imposterIds.length,
+                    fellowImposters: isImp ? allImposterCards : [],
                     tasks: p.tasks,
                 });
             }
@@ -285,9 +397,12 @@ export const registerRoomEvents = (io, socket) => {
     socket.on("player:register", playerRegister);
     socket.on("player:unregister", playerUnregister);
     socket.on("player:disconnect", playerDisconnect);
+    socket.on("player:customize", playerCustomize);
     socket.on("room:create", roomCreate);
     socket.on("room:join", roomJoin);
     socket.on("room:leave", roomLeave);
+    socket.on("room:update-settings", roomUpdateSettings);
+    socket.on("room:update-meta", roomUpdateMeta);
     socket.on("room:playAgain", roomPlayAgain);
     socket.on("game:start", gameStart);
     socket.on("room:send:message", sendMessage);

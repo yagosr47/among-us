@@ -16,6 +16,24 @@
 
 /**
  * @typedef {{
+ *   map: string,
+ *   impostorCount: number,
+ *   confirmEjects: boolean,
+ *   emergencyMeetings: number,
+ *   emergencyCooldownSec: number,
+ *   meetingDurationSec: number,
+ *   anonymousVotes: boolean,
+ *   playerSpeed: number,
+ *   crewVision: number,
+ *   impostorVision: number,
+ *   killCooldownSec: number,
+ *   killDistance: 'short' | 'medium' | 'long',
+ *   tasksPerPlayer: number
+ * }} RoomSettings
+ */
+
+/**
+ * @typedef {{
  *   id: string,
  *   name: string,
  *   roomId: string | null,
@@ -25,6 +43,7 @@
  *   isImposter: boolean,
  *   isAlive: boolean,
  *   inVent: boolean,
+ *   emergencyCallsLeft: number,
  *   tasks: PlayerTask[]
  * }} Player
  */
@@ -58,6 +77,9 @@
  *   ejectedName: string | null,
  *   ejectedColor: string | null,
  *   wasImposter: boolean,
+ *   confirmEjects: boolean,
+ *   remainingImpostors: number,
+ *   anonymousVotes: boolean,
  *   tie: boolean,
  *   skipped: boolean,
  *   counts: Record<string, number>,
@@ -68,12 +90,19 @@
 /**
  * @typedef {{
  *   id: string,
+ *   name: string,
+ *   isPublic: boolean,
+ *   region: string,
+ *   map: string,
  *   started: boolean,
  *   imposter: string | null,
+ *   imposters: string[],
  *   host: Player,
+ *   settings: RoomSettings,
  *   players: Record<string, Player>,
  *   deadBodies: Record<string, DeadBody>,
  *   lastKillAt: number,
+ *   lastEmergencyAt: number,
  *   currentMeeting: MeetingState | null
  * }} GameRoom
  */

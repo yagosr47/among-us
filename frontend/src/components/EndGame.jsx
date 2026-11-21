@@ -6,8 +6,8 @@ import { soundFX } from '../utils/sound.js';
 
 const REASON_TEXT = {
     tasks_completed: 'Crewmates completed all ship tasks!',
-    imposter_eliminated: 'The Impostor was ejected!',
-    outnumbered: 'The Impostor outnumbered the crew!',
+    imposter_eliminated: 'All Impostors were eliminated!',
+    outnumbered: 'The Impostors outnumbered the crew!',
 };
 
 export default function EndGame({
@@ -28,11 +28,20 @@ export default function EndGame({
 
     const reasonText =
         REASON_TEXT[result?.reason] ||
-        (isImposterWin ? 'The Impostor took over the ship!' : 'Crewmates saved The Skeld!');
+        (isImposterWin ? 'The Impostors took over the ship!' : 'Crewmates saved The Skeld!');
+
+    const impSet = new Set(
+        result?.imposters?.length ? result.imposters : result?.imposterId ? [result.imposterId] : []
+    );
 
     const winnerPlayers = Object.values(players || {}).filter((p) =>
-        isImposterWin ? p.id === result?.imposterId : p.id !== result?.imposterId
+        isImposterWin ? impSet.has(p.id) : !impSet.has(p.id)
     );
+
+    const impNamesText =
+        result?.imposterNames?.length > 0
+            ? result.imposterNames.join(', ')
+            : result?.imposterName || '';
 
     return (
         <div className={`${styles.endGameOverlay} ${isVictory ? styles.victory : styles.defeat}`}>
@@ -40,28 +49,40 @@ export default function EndGame({
             <div className={styles.content}>
                 <h1 className={styles.title}>{isVictory ? 'VICTORY' : 'DEFEAT'}</h1>
                 <p className={styles.winnerMessage}>
-                    {isImposterWin ? 'Impostor Wins' : 'Crewmates Win'}
+                    {isImposterWin
+                        ? impSet.size > 1
+                            ? 'Impostors Win'
+                            : 'Impostor Wins'
+                        : 'Crewmates Win'}
                 </p>
                 <p className={styles.reason}>{reasonText}</p>
-                {result?.imposterName && (
+                {impNamesText && (
                     <p className={styles.revealImposter}>
-                        The Impostor was <span>{result.imposterName}</span>
+                        {impSet.size > 1 ? 'The Impostors were ' : 'The Impostor was '}
+                        <span>{impNamesText}</span>
                     </p>
                 )}
 
                 <div className={styles.characterRow}>
-                    {(winnerPlayers.length > 0 ? winnerPlayers.slice(0, 6) : [{ id: 'fallback', color: isImposterWin ? '#c51111' : '#38fedc', name: '' }]).map(
-                        (p, idx) => (
-                            <div
-                                key={p.id}
-                                className={`${styles.character} ${isVictory ? styles.jump : styles.float}`}
-                                style={{ animationDelay: `${idx * 110}ms` }}
-                            >
-                                <CrewmateAvatar color={p.color} size={84} />
-                                {p.name && <span className={styles.charName}>{p.name}</span>}
-                            </div>
-                        )
-                    )}
+                    {(winnerPlayers.length > 0
+                        ? winnerPlayers.slice(0, 8)
+                        : [
+                              {
+                                  id: 'fallback',
+                                  color: isImposterWin ? '#c51111' : '#38fedc',
+                                  name: '',
+                              },
+                          ]
+                    ).map((p, idx) => (
+                        <div
+                            key={p.id}
+                            className={`${styles.character} ${isVictory ? styles.jump : styles.float}`}
+                            style={{ animationDelay: `${idx * 110}ms` }}
+                        >
+                            <CrewmateAvatar color={p.color} size={84} />
+                            {p.name && <span className={styles.charName}>{p.name}</span>}
+                        </div>
+                    ))}
                 </div>
 
                 <div className={styles.btnRow}>

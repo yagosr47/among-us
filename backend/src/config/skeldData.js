@@ -12,6 +12,102 @@ export const GAME_CONSTANTS = {
     MAX_PLAYERS_PER_ROOM: 10,
 };
 
+export const KILL_DISTANCE_MAP = {
+    short: 70,
+    medium: 95,
+    long: 125,
+};
+
+export const VALID_REGIONS = ['SA', 'NA', 'EU', 'AS'];
+
+export const DEFAULT_ROOM_SETTINGS = {
+    map: 'The Skeld',
+    impostorCount: 1,
+    confirmEjects: true,
+    emergencyMeetings: 1,
+    emergencyCooldownSec: 15,
+    meetingDurationSec: 45,
+    anonymousVotes: false,
+    playerSpeed: 1.0,
+    crewVision: 1.0,
+    impostorVision: 1.25,
+    killCooldownSec: 15,
+    killDistance: 'medium',
+    tasksPerPlayer: 4,
+};
+
+const ALLOWED_ENUMS = {
+    impostorCount: [1, 2, 3],
+    emergencyMeetings: [1, 2, 3, 5, 9],
+    emergencyCooldownSec: [10, 15, 20, 30],
+    meetingDurationSec: [15, 30, 45, 60, 90, 120],
+    playerSpeed: [0.75, 1.0, 1.25, 1.5, 1.75, 2.0],
+    crewVision: [0.5, 0.75, 1.0, 1.25, 1.5],
+    impostorVision: [0.75, 1.0, 1.25, 1.5, 1.75, 2.0],
+    killCooldownSec: [10, 15, 20, 25, 30, 45],
+    killDistance: ['short', 'medium', 'long'],
+    tasksPerPlayer: [2, 3, 4, 5, 6, 8],
+};
+
+function pickAllowed(value, allowed, fallback) {
+    if (allowed.includes(value)) return value;
+    const num = Number(value);
+    if (!Number.isNaN(num) && allowed.includes(num)) return num;
+    return fallback;
+}
+
+/**
+ * Sanitize and clamp incoming room settings patch
+ * @param {Partial<typeof DEFAULT_ROOM_SETTINGS>} patch
+ * @param {typeof DEFAULT_ROOM_SETTINGS} current
+ */
+export function sanitizeRoomSettings(patch = {}, current = DEFAULT_ROOM_SETTINGS) {
+    const base = { ...DEFAULT_ROOM_SETTINGS, ...(current || {}) };
+    if (!patch || typeof patch !== 'object') return base;
+
+    return {
+        map: 'The Skeld',
+        impostorCount: pickAllowed(patch.impostorCount, ALLOWED_ENUMS.impostorCount, base.impostorCount),
+        confirmEjects:
+            typeof patch.confirmEjects === 'boolean' ? patch.confirmEjects : base.confirmEjects,
+        emergencyMeetings: pickAllowed(
+            patch.emergencyMeetings,
+            ALLOWED_ENUMS.emergencyMeetings,
+            base.emergencyMeetings
+        ),
+        emergencyCooldownSec: pickAllowed(
+            patch.emergencyCooldownSec,
+            ALLOWED_ENUMS.emergencyCooldownSec,
+            base.emergencyCooldownSec
+        ),
+        meetingDurationSec: pickAllowed(
+            patch.meetingDurationSec,
+            ALLOWED_ENUMS.meetingDurationSec,
+            base.meetingDurationSec
+        ),
+        anonymousVotes:
+            typeof patch.anonymousVotes === 'boolean' ? patch.anonymousVotes : base.anonymousVotes,
+        playerSpeed: pickAllowed(patch.playerSpeed, ALLOWED_ENUMS.playerSpeed, base.playerSpeed),
+        crewVision: pickAllowed(patch.crewVision, ALLOWED_ENUMS.crewVision, base.crewVision),
+        impostorVision: pickAllowed(
+            patch.impostorVision,
+            ALLOWED_ENUMS.impostorVision,
+            base.impostorVision
+        ),
+        killCooldownSec: pickAllowed(
+            patch.killCooldownSec,
+            ALLOWED_ENUMS.killCooldownSec,
+            base.killCooldownSec
+        ),
+        killDistance: pickAllowed(patch.killDistance, ALLOWED_ENUMS.killDistance, base.killDistance),
+        tasksPerPlayer: pickAllowed(
+            patch.tasksPerPlayer,
+            ALLOWED_ENUMS.tasksPerPlayer,
+            base.tasksPerPlayer
+        ),
+    };
+}
+
 export const EMERGENCY_BUTTON_POS = { x: 563, y: 118 };
 
 export const LOBBY_SPAWNS = [

@@ -28,8 +28,10 @@ export function setupVisionSystem(scene) {
         scene.mapObjects.push(scene.collisionLayer);
     }
 
-    // Imposters have slightly wider vision than crewmates
-    scene.VISION_RADIUS = scene.imposter ? 140 : 108;
+    const settings = scene.room?.settings || {};
+    const crewMult = settings.crewVision || 1.0;
+    const impMult = settings.impostorVision || 1.25;
+    scene.VISION_RADIUS = scene.imposter ? Math.round(112 * impMult) : Math.round(108 * crewMult);
     scene.visionEnabled = true;
 }
 
