@@ -1,0 +1,147 @@
+.endGameOverlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 10000;
+  animation: fadeIn 0.45s ease-out forwards;
+  overflow: hidden;
+}
+
+.victory {
+  background: radial-gradient(circle at center, rgba(14, 116, 144, 0.95) 0%, #041e2e 100%);
+}
+
+.defeat {
+  background: radial-gradient(circle at center, rgba(153, 27, 27, 0.95) 0%, #1c0407 100%);
+}
+
+.starsLayer {
+  position: absolute;
+  inset: 0;
+  background-image:
+    radial-gradient(2px 2px at 18% 24%, #fff, transparent),
+    radial-gradient(2px 2px at 78% 18%, #e2e8f0, transparent),
+    radial-gradient(1.5px 1.5px at 50% 82%, #fff, transparent);
+  background-size: 260px 260px;
+  opacity: 0.5;
+}
+
+.content {
+  position: relative;
+  z-index: 2;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 24px;
+}
+
+.title {
+  font-family: 'amongus', 'Arial Black', sans-serif;
+  font-size: clamp(3.8rem, 9vw, 6.5rem);
+  margin: 0;
+  letter-spacing: 0.1em;
+  animation: popTitle 0.6s cubic-bezier(0.2, 1.35, 0.4, 1) forwards;
+}
+
+.victory .title {
+  color: #38bdf8;
+  text-shadow: 0 0 32px rgba(56, 189, 248, 0.7);
+}
+
+.defeat .title {
+  color: #ef4444;
+  text-shadow: 0 0 32px rgba(239, 68, 68, 0.7);
+}
+
+.winnerMessage {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: #ffffff;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  margin: 0;
+}
+
+.reason {
+  color: #e2e8f0;
+  font-size: 1.05rem;
+  margin: 0;
+}
+
+.revealImposter {
+  color: #cbd5e1;
+  font-size: 1rem;
+  margin: 0 0 8px;
+}
+
+.revealImposter span {
+  color: #fca5a5;
+  font-weight: 800;
+}
+
+.characterRow {
+  display: flex;
+  gap: 20px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin: 14px 0 20px;
+}
+
+.character {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.charName {
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.jump {
+  animation: jump 0.65s infinite alternate ease-in-out;
+}
+
+.float {
+  animation: float 2s infinite alternate ease-in-out;
+  opacity: 0.85;
+}
+
+.btnRow {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.playAgainBtn,
+.menuBtn {
+  font-size: 1.65rem;
+  padding: 10px 26px;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes popTitle {
+  from { transform: scale(0.5); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+@keyframes jump {
+  from { transform: translateY(0); }
+  to { transform: translateY(-18px); }
+}
+
+@keyframes float {
+  from { transform: translateY(0) rotate(-4deg); }
+  to { transform: translateY(-14px) rotate(4deg); }
+}

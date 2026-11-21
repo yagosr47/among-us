@@ -1,0 +1,377 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.72);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9500;
+  animation: popIn 0.2s ease-out;
+}
+
+@keyframes popIn {
+  from { opacity: 0; transform: scale(0.92); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.modal {
+  width: min(460px, 92vw);
+  background: linear-gradient(155deg, #1e293b 0%, #0f172a 100%);
+  border: 4px solid #64748b;
+  border-radius: 18px;
+  padding: 18px;
+  color: #f8fafc;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.75);
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.25);
+  padding-bottom: 10px;
+  margin-bottom: 14px;
+}
+
+.title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 800;
+}
+
+.roomBadge {
+  display: inline-block;
+  margin-top: 3px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #38bdf8;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.closeBtn {
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  color: #f8fafc;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 1rem;
+}
+
+.gameBox {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+}
+
+.helperText {
+  margin: 0;
+  color: #cbd5e1;
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.actionBtn {
+  padding: 10px 20px;
+  border-radius: 10px;
+  border: 2px solid #38bdf8;
+  background: rgba(56, 189, 248, 0.2);
+  color: #ffffff;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.cardReaderTop {
+  width: 100%;
+  background: #020617;
+  border: 2px solid #475569;
+  border-radius: 8px;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ledGreen {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 8px #22c55e;
+}
+
+.readerText {
+  font-family: monospace;
+  font-size: 0.9rem;
+  color: #86efac;
+}
+
+.swipeTrack {
+  position: relative;
+  width: 100%;
+  height: 92px;
+  background: #334155;
+  border-radius: 10px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+}
+
+.idCard {
+  position: absolute;
+  top: 12px;
+  width: 136px;
+  height: 68px;
+  background: linear-gradient(135deg, #f8fafc, #cbd5e1);
+  border-radius: 8px;
+  border: 2px solid #0f172a;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+  color: #0f172a;
+  pointer-events: none;
+}
+
+.cardTitle {
+  font-weight: 900;
+  font-size: 0.72rem;
+}
+
+.cardSub {
+  font-size: 0.6rem;
+  color: #475569;
+}
+
+.swipeSlider {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: grab;
+}
+
+.scanChamber {
+  position: relative;
+  width: 160px;
+  height: 140px;
+  background: radial-gradient(circle, rgba(34, 197, 94, 0.2), #020617);
+  border: 2px solid #22c55e;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.laserBeam {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 6px;
+  background: #4ade80;
+  box-shadow: 0 0 14px #4ade80;
+  animation: scanSweep 1.2s ease-in-out infinite alternate;
+}
+
+@keyframes scanSweep {
+  from { top: 8px; }
+  to { top: 126px; }
+}
+
+.scanBar {
+  width: 100%;
+  height: 12px;
+  background: #020617;
+  border-radius: 999px;
+  overflow: hidden;
+  border: 1px solid #334155;
+}
+
+.scanFill {
+  height: 100%;
+  background: linear-gradient(90deg, #22c55e, #4ade80);
+  transition: width 0.1s linear;
+}
+
+.scanStatus {
+  font-family: monospace;
+  font-size: 0.85rem;
+  color: #86efac;
+  margin: 0;
+}
+
+.wiringBoard {
+  position: relative;
+  width: 300px;
+  height: 180px;
+  background: #020617;
+  border: 2px solid #475569;
+  border-radius: 10px;
+  display: flex;
+  justify-content: space-between;
+  padding: 12px;
+}
+
+.wireSvg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.wireCol {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  z-index: 2;
+}
+
+.wireNode {
+  width: 28px;
+  height: 24px;
+  border-radius: 6px;
+  border: 2px solid #ffffff;
+  cursor: pointer;
+}
+
+.wireSelected {
+  box-shadow: 0 0 0 3px #facc15;
+  transform: scale(1.1);
+}
+
+.radarScreen {
+  position: relative;
+  width: 100%;
+  height: 200px;
+  background: radial-gradient(circle, #064e3b 0%, #022c22 100%);
+  border: 2px solid #10b981;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.asteroidBtn {
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  background: rgba(120, 113, 108, 0.7);
+  cursor: crosshair;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  transition: transform 0.1s;
+}
+
+.asteroidBtn:hover {
+  transform: scale(1.15);
+}
+
+.manifoldGrid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+  width: 100%;
+}
+
+.manifoldErr {
+  animation: shake 0.25s;
+}
+
+@keyframes shake {
+  25% { transform: translateX(-6px); }
+  75% { transform: translateX(6px); }
+}
+
+.manifoldBtn {
+  padding: 14px 0;
+  border-radius: 8px;
+  border: 2px solid #38bdf8;
+  background: #1e293b;
+  color: #ffffff;
+  font-size: 1.1rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.manifoldDone {
+  background: #16a34a;
+  border-color: #86efac;
+  opacity: 0.7;
+}
+
+.shieldsGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  width: 100%;
+}
+
+.shieldHex {
+  padding: 16px 0;
+  border-radius: 10px;
+  border: 2px solid #f87171;
+  background: #991b1b;
+  color: #ffffff;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.shieldActive {
+  border-color: #67e8f9;
+  background: #0891b2;
+}
+
+.chuteBox {
+  width: 100%;
+  height: 90px;
+  background: #020617;
+  border: 2px solid #475569;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.leverRange {
+  width: 100%;
+  cursor: pointer;
+}
+
+.chartSpace {
+  position: relative;
+  width: 100%;
+  height: 185px;
+  background: radial-gradient(circle, #0f172a, #020617);
+  border: 2px solid #38bdf8;
+  border-radius: 12px;
+}
+
+.waypointBtn {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 2px solid #94a3b8;
+  background: #1e293b;
+  color: #ffffff;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.waypointNext {
+  border-color: #facc15;
+  background: #ca8a04;
+  box-shadow: 0 0 12px #facc15;
+}
+
+.waypointDone {
+  border-color: #4ade80;
+  background: #16a34a;
+}
