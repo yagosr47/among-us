@@ -59,8 +59,9 @@ export default function Meeting({
     };
 
     // Map votes per candidate once results are revealed
+    const isAnon = Boolean(results?.anonymousVotes);
     const votersByTarget = {};
-    if (results?.votes) {
+    if (results?.votes && !isAnon) {
         Object.entries(results.votes).forEach(([voterId, votedForId]) => {
             const voter = players?.[voterId];
             if (!voter) return;
@@ -68,9 +69,11 @@ export default function Meeting({
             votersByTarget[votedForId].push(voter);
         });
     }
+    const countsByTarget = results?.counts || {};
 
     const secondsLeft = Math.max(0, Math.ceil(timeRemaining / 1000));
     const skipVoters = votersByTarget['skip'] || [];
+    const skipAnonCount = isAnon ? countsByTarget['skip'] || 0 : 0;
 
     return (
         <div className={styles.meetingOverlay}>
@@ -105,6 +108,7 @@ export default function Meeting({
                                     canVote={canVote}
                                     isSelected={selectedTarget === player.id}
                                     voters={votersByTarget[player.id] || []}
+                                    anonymousCount={isAnon ? countsByTarget[player.id] || 0 : 0}
                                     onSelect={(id) =>
                                         setSelectedTarget((prev) => (prev === id ? null : id))
                                     }
@@ -153,12 +157,16 @@ export default function Meeting({
                                     </span>
                                 )}
 
-                                {skipVoters.length > 0 && (
+                                {(skipVoters.length > 0 || skipAnonCount > 0) && (
                                     <div className={styles.skipVoters}>
                                         <span className={styles.skipLabel}>Skipped:</span>
-                                        {skipVoters.map((v) => (
-                                            <CrewmateAvatar key={v.id} color={v.color} size={18} />
-                                        ))}
+                                        {skipVoters.length > 0
+                                            ? skipVoters.map((v) => (
+                                                  <CrewmateAvatar key={v.id} color={v.color} size={18} />
+                                              ))
+                                            : Array.from({ length: skipAnonCount }).map((_, i) => (
+                                                  <CrewmateAvatar key={i} color="#94a3b8" size={18} />
+                                              ))}
                                     </div>
                                 )}
                             </div>

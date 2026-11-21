@@ -1,10 +1,13 @@
-import { RoomsManager, serializeRoom } from "../managers/rooms.manager.js";
+import { RoomsManager, getImposterIds, serializeRoom } from "../managers/rooms.manager.js";
 import { PlayersManager } from "../managers/players.manager.js";
 import {
+    DEFAULT_ROOM_SETTINGS,
     EMERGENCY_BUTTON_POS,
     GAME_CONSTANTS,
+    KILL_DISTANCE_MAP,
     SKELD_VENTS,
 } from "../config/skeldData.js";
+import { buildGameEndedPayload } from "./roomEvents.js";
 
 function dist(ax, ay, bx, by) {
     return Math.hypot(ax - bx, ay - by);
@@ -33,15 +36,9 @@ export const registerGameEvents = (io, socket) => {
         if (win !== null) {
             const delay = results.ejectedId ? GAME_CONSTANTS.EJECTION_DELAY_MS : 2000;
             setTimeout(() => {
-                // Re-verify room still exists and game still started
                 const latest = RoomsManager.fetchRoom(roomId);
                 if (!latest || !latest.started) return;
-                io.to(roomId).emit("game:ended", {
-                    roomId,
-                    ...win,
-                    imposterId: latest.imposter,
-                    imposterName: latest.imposter ? latest.players[latest.imposter]?.name : null,
-                });
+                io.to(roomId).emit("game:ended", buildGameEndedPayload(latest, win));
             }, delay);
         }
     };
@@ -58,7 +55,7 @@ export const registerGameEvents = (io, socket) => {
         const nextState = {
             x: Number(data.x) || 0,
             y: Number(data.y) || 0,
-            d: data.d === 'left' ? 'left' : 'right',
+            d: data.d === "left" ? "left" : "right",
             moving: Boolean(data.moving),
         };
 
@@ -84,18 +81,24 @@ export const registerGameEvents = (io, socket) => {
         const killer = room.players[killerId];
         const victim = room.players[targetId];
         if (!killer || !victim || !killer.isAlive || !victim.isAlive) return;
-        if (room.imposter !== killerId || targetId === killerId) return;
+
+        const imposterSet = new Set(getImposterIds(room));
+        if (!imposterSet.has(killerId) || imposterSet.has(targetId) || targetId === killerId) return;
         if (killer.inVent) return;
+
+        const settings = room.settings || DEFAULT_ROOM_SETTINGS;
+        const cooldownMs = (settings.killCooldownSec || 15) * 1000;
+        const killRange = KILL_DISTANCE_MAP[settings.killDistance] || GAME_CONSTANTS.KILL_RANGE;
 
         // Server-side kill cooldown enforcement
         const elapsed = Date.now() - (room.lastKillAt || 0);
-        if (elapsed < GAME_CONSTANTS.KILL_COOLDOWN_MS - 400) {
+        if (elapsed < cooldownMs - 400) {
             return;
         }
 
         // Distance check with latency margin
         const d = dist(killer.state.x, killer.state.y, victim.state.x, victim.state.y);
-        if (d > GAME_CONSTANTS.KILL_RANGE + 30) {
+        if (d > killRange + 30) {
             return;
         }
 
@@ -119,18 +122,15 @@ export const registerGameEvents = (io, socket) => {
             x: victim.state.x,
             y: victim.state.y,
             color: victim.color,
-            nextKillCooldownMs: GAME_CONSTANTS.KILL_COOLDOWN_MS,
+            nextKillCooldownMs: cooldownMs,
         });
 
         const win = RoomsManager.checkWin(roomId);
         if (win !== null) {
             setTimeout(() => {
-                io.to(roomId).emit("game:ended", {
-                    roomId,
-                    ...win,
-                    imposterId: room.imposter,
-                    imposterName: room.imposter ? room.players[room.imposter]?.name : null,
-                });
+                const latest = RoomsManager.fetchRoom(roomId);
+                if (!latest || !latest.started) return;
+                io.to(roomId).emit("game:ended", buildGameEndedPayload(latest, win));
             }, 900);
         }
     };
@@ -145,7 +145,8 @@ export const registerGameEvents = (io, socket) => {
         const room = RoomsManager.fetchRoom(roomId);
         if (!room || !room.started || room.currentMeeting?.isActive) return;
         const player = room.players[playerId];
-        if (!player || !player.isAlive || room.imposter !== playerId) return;
+        const imposterSet = new Set(getImposterIds(room));
+        if (!player || !player.isAlive || !imposterSet.has(playerId)) return;
 
         const vent = SKELD_VENTS.find((v) => v.id === ventId);
         if (!vent) return;
@@ -193,12 +194,7 @@ export const registerGameEvents = (io, socket) => {
 
         const win = RoomsManager.checkWin(roomId);
         if (win !== null) {
-            io.to(roomId).emit("game:ended", {
-                roomId,
-                ...win,
-                imposterId: room.imposter,
-                imposterName: room.imposter ? room.players[room.imposter]?.name : null,
-            });
+            io.to(roomId).emit("game:ended", buildGameEndedPayload(room, win));
         }
     };
 
@@ -215,6 +211,7 @@ export const registerGameEvents = (io, socket) => {
         const caller = room.players[callerId];
         if (!caller || !caller.isAlive || caller.inVent) return;
 
+        const settings = room.settings || DEFAULT_ROOM_SETTINGS;
         let bodyColor = null;
         let bodyName = null;
 
@@ -233,6 +230,20 @@ export const registerGameEvents = (io, socket) => {
             ) {
                 return;
             }
+            if ((caller.emergencyCallsLeft ?? 1) <= 0) {
+                socket.emit("game:notif", { message: "No emergency meetings remaining!" });
+                return;
+            }
+            const emergencyCooldownMs = (settings.emergencyCooldownSec || 15) * 1000;
+            const sinceLast = Date.now() - (room.lastEmergencyAt || 0);
+            if (sinceLast < emergencyCooldownMs - 400) {
+                const waitSec = Math.ceil((emergencyCooldownMs - sinceLast) / 1000);
+                socket.emit("game:notif", {
+                    message: `Emergency meeting on cooldown (${waitSec}s left)`,
+                });
+                return;
+            }
+            caller.emergencyCallsLeft = Math.max(0, (caller.emergencyCallsLeft ?? 1) - 1);
         }
 
         const meeting = RoomsManager.meetings.create(
@@ -256,6 +267,7 @@ export const registerGameEvents = (io, socket) => {
             bodyName,
             endTime: meeting.endTime,
             players: safeRoom.players,
+            anonymousVotes: Boolean(settings.anonymousVotes),
         });
     };
 

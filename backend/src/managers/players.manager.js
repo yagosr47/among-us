@@ -1,4 +1,4 @@
-import { LOBBY_SPAWNS } from "../config/skeldData.js";
+import { DEFAULT_ROOM_SETTINGS, LOBBY_SPAWNS } from "../config/skeldData.js";
 
 /**
  * @type {Record<string, import('../types/room.type.js').Player>}
@@ -27,6 +27,7 @@ export const PlayersManager = {
                 isImposter: false,
                 isAlive: true,
                 inVent: false,
+                emergencyCallsLeft: DEFAULT_ROOM_SETTINGS.emergencyMeetings,
                 tasks: [],
             };
         } else {
@@ -76,6 +77,7 @@ export const PlayersManager = {
             players[id].isAlive = true;
             players[id].isImposter = false;
             players[id].inVent = false;
+            players[id].emergencyCallsLeft = DEFAULT_ROOM_SETTINGS.emergencyMeetings;
             players[id].tasks = [];
         }
     },

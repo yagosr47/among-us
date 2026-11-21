@@ -1,7 +1,6 @@
 import Phaser from 'phaser';
 import { Scene } from 'phaser';
 import { socketService } from '../../services/socket.js';
-import { apiUrl } from '../../utils/urls.js';
 import { EventBus } from '../EventBus.js';
 import { createPlayer, spawnDustPuff } from '../utils/playerFactory.js';
 import { soundFX } from '../../utils/sound.js';
@@ -26,7 +25,7 @@ export class BaseGameScene extends Scene {
         this.load.image('idleImage', 'assets/sprites/Base/idle.png');
         this.load.image('starParticle', 'assets/star.png');
 
-        // Load Ghost animation frames (every 2nd frame for smooth 24fps loop & fast load)
+        // Load Ghost animation frames (every 2nd frame for smooth loop & fast load)
         for (let i = 1; i <= 47; i += 2) {
             const num = String(i).padStart(4, '0');
             this.load.image(`ghost_${num}`, `assets/sprites/Base/ghost/ghost${num}.png`);
@@ -149,14 +148,12 @@ export class BaseGameScene extends Scene {
 
     async fetchAndSetupPlayers() {
         const playerId = sessionStorage.getItem('playerId');
-        const response = await fetch(apiUrl(`/player/room/${playerId}`));
-        if (!response.ok) {
-            console.error('Failed to fetch player room:', response.status);
+        const data = await socketService.fetchPlayerRoom(playerId);
+        if (!this.sys || !this.sys.displayList) return;
+        if (!data?.room || !data?.player) {
+            console.error('Failed to fetch player room snapshot');
             return;
         }
-        const data = await response.json();
-        if (!this.sys || !this.sys.displayList) return;
-        if (!data?.room || !data?.player) return;
 
         this.room = data.room;
         this.roomId = data.room.id;
@@ -328,8 +325,8 @@ export class BaseGameScene extends Scene {
     handleMovement(time = 0) {
         if (!this.player || !this.player.body || !this.playerObj) return;
 
-        // Disable keyboard movement while modal/meeting/venting is active
-        if (this.meetingActive || this.taskModalOpen || this.player.inVent) {
+        // Disable keyboard movement while modal/meeting/venting/laptop is active
+        if (this.meetingActive || this.taskModalOpen || this.laptopOpen || this.player.inVent) {
             this.player.body.setVelocity(0, 0);
             if (this.player.alive && this.player.anims.isPlaying) {
                 this.player.anims.stop();
@@ -338,10 +335,18 @@ export class BaseGameScene extends Scene {
             return;
         }
 
+        // Prevent Phaser movement while typing inside chat/inputs in React
+        const activeTag = document.activeElement?.tagName;
+        if (activeTag === 'INPUT' || activeTag === 'TEXTAREA') {
+            this.player.body.setVelocity(0, 0);
+            return;
+        }
+
         this.player.body.setVelocity(0, 0);
 
-        const baseSpeed = this.scene.key === 'WaitingLobby' ? 320 : 112;
-        const speed = this.player.alive ? baseSpeed : baseSpeed * 1.25; // Ghosts glide slightly faster
+        const speedMultiplier = this.room?.settings?.playerSpeed || 1.0;
+        const baseSpeed = this.scene.key === 'WaitingLobby' ? 300 * Math.min(1.4, speedMultiplier) : 112 * speedMultiplier;
+        const speed = this.player.alive ? baseSpeed : baseSpeed * 1.25;
         let vx = 0;
         let vy = 0;
 

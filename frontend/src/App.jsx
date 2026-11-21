@@ -10,9 +10,11 @@ import EjectionOverlay from './components/EjectionOverlay.jsx';
 import RoleReveal from './components/RoleReveal.jsx';
 import TaskModal from './components/TaskModal.jsx';
 import MiniMap from './components/MiniMap.jsx';
+import LaptopModal from './components/LaptopModal.jsx';
 import EndGame from './components/EndGame.jsx';
 import { EventBus } from './game/EventBus.js';
 import { ToastContainer } from './components/Toast.jsx';
+import { DEFAULT_ROOM_SETTINGS } from './game/skeldData.js';
 import { soundFX } from './utils/sound.js';
 
 const PAGES = { MENU: 'menu', WAITING: 'waiting', GAME: 'game', GAMEEND: 'gameend' };
@@ -20,9 +22,21 @@ const PAGES = { MENU: 'menu', WAITING: 'waiting', GAME: 'game', GAMEEND: 'gameen
 function App() {
     const [currentPage, setCurrentPage] = useState(PAGES.MENU);
     const [roomId, setRoomId] = useState(null);
+    const [roomMeta, setRoomMeta] = useState({
+        isPublic: true,
+        isOffline: false,
+        region: 'SA',
+        hostName: 'Host',
+    });
     const [roomPlayers, setRoomPlayers] = useState({});
+    const [roomSettings, setRoomSettings] = useState(DEFAULT_ROOM_SETTINGS);
     const [isLocalPlayerHost, setIsLocalPlayerHost] = useState(false);
     const [isLocalPlayerImposter, setIsLocalPlayerImposter] = useState(false);
+    const [roleMeta, setRoleMeta] = useState({ impostorCount: 1, fellowImposters: [] });
+
+    const [laptopOpen, setLaptopOpen] = useState(false);
+    const [laptopTab, setLaptopTab] = useState('settings');
+    const [customError, setCustomError] = useState('');
 
     const [showRoleReveal, setShowRoleReveal] = useState(false);
     const [meetingBanner, setMeetingBanner] = useState(null);
@@ -71,7 +85,10 @@ function App() {
         const handleStartGame = (data) => {
             if (data.roomId !== roomIdRef.current) return;
 
+            setLaptopOpen(false);
+            EventBus.emit('laptop:modal-state', false);
             setRoomPlayers(data.room?.players || {});
+            if (data.settings) setRoomSettings(data.settings);
             setTaskSummary(data.room?.taskSummary || { completed: 0, total: 0, ratio: 0 });
             setChatMessages([]);
             setMeetingActive(false);
@@ -86,7 +103,13 @@ function App() {
                 roomId: data.roomId,
                 room: data.room,
                 initialCooldownMs: data.initialCooldownMs,
-                ...(roleInfo ? { isImposter: roleInfo.isImposter, tasks: roleInfo.tasks } : {}),
+                ...(roleInfo
+                    ? {
+                          isImposter: roleInfo.isImposter,
+                          tasks: roleInfo.tasks,
+                          fellowImposters: roleInfo.fellowImposters,
+                      }
+                    : {}),
             });
         };
 
@@ -94,6 +117,10 @@ function App() {
             if (data.roomId !== roomIdRef.current) return;
             roleDataRef.current = data;
             setIsLocalPlayerImposter(Boolean(data.isImposter));
+            setRoleMeta({
+                impostorCount: data.impostorCount || 1,
+                fellowImposters: data.fellowImposters || [],
+            });
             setTasks(data.tasks || []);
             setShowRoleReveal(true);
             EventBus.emit('role:assigned', data);
@@ -105,11 +132,58 @@ function App() {
             }
         };
 
+        const handlePlayerJoined = (data) => {
+            if (data?.roomId !== roomIdRef.current || !data?.player) return;
+            setRoomPlayers((prev) => ({
+                ...prev,
+                [data.player.id]: data.player,
+            }));
+        };
+
         const handlePlayerLeft = (data) => {
+            if (data?.playerId) {
+                setRoomPlayers((prev) => {
+                    const next = { ...prev };
+                    delete next[data.playerId];
+                    return next;
+                });
+            }
             if (data?.newHostId && data.newHostId === playerIdRef.current) {
                 setIsLocalPlayerHost(true);
                 window.showToast?.('You are now the room host', 'info', 2500);
             }
+        };
+
+        const handleSettingsUpdated = (data) => {
+            if (data?.roomId && data.roomId !== roomIdRef.current) return;
+            if (data?.settings) setRoomSettings(data.settings);
+            if (data?.room?.players) setRoomPlayers(data.room.players);
+        };
+
+        const handleMetaUpdated = (data) => {
+            if (data?.roomId !== roomIdRef.current || !data?.room) return;
+            setRoomMeta((prev) => ({
+                ...prev,
+                isPublic: data.room.isPublic !== false,
+                region: data.room.region || prev.region,
+            }));
+        };
+
+        const handlePlayerCustomized = (data) => {
+            if (data?.roomId !== roomIdRef.current) return;
+            setCustomError('');
+            if (data?.room?.players) {
+                setRoomPlayers(data.room.players);
+            } else if (data?.player) {
+                setRoomPlayers((prev) => ({ ...prev, [data.player.id]: data.player }));
+            }
+            if (data?.room?.host?.name) {
+                setRoomMeta((prev) => ({ ...prev, hostName: data.room.host.name }));
+            }
+        };
+
+        const handleCustomizeError = (data) => {
+            setCustomError(data?.message || 'Could not update customization');
         };
 
         const handleTasksUpdated = (data) => {
@@ -148,7 +222,9 @@ function App() {
             setEjectionResults(null);
             setActiveTask(null);
             setShowRoleReveal(false);
+            setLaptopOpen(false);
             roleDataRef.current = null;
+            if (data.room?.settings) setRoomSettings(data.room.settings);
             setRoomPlayers(data.room?.players || {});
             setCurrentPage(PAGES.WAITING);
         };
@@ -176,7 +252,6 @@ function App() {
                 setRoomPlayers(data.room.players);
             }
 
-            // Brief reveal of who voted for whom inside tablet, then ejection cutscene
             setTimeout(() => {
                 setMeetingActive(false);
                 setMeetingData(null);
@@ -200,6 +275,13 @@ function App() {
             EventBus.emit('task:modal-state', true);
         };
 
+        const onLaptopOpen = (payload) => {
+            setCustomError('');
+            setLaptopTab(payload?.tab || 'settings');
+            setLaptopOpen(true);
+            EventBus.emit('laptop:modal-state', true);
+        };
+
         const onHudUpdate = (info) => {
             setHudInfo((prev) => ({
                 ...prev,
@@ -219,7 +301,12 @@ function App() {
 
         socket.on('game:started', handleStartGame);
         socket.on('game:role', handleRoleAssigned);
+        socket.on('player:joined', handlePlayerJoined);
         socket.on('player:left', handlePlayerLeft);
+        socket.on('room:settings:updated', handleSettingsUpdated);
+        socket.on('room:meta:updated', handleMetaUpdated);
+        socket.on('player:customized', handlePlayerCustomized);
+        socket.on('player:customize:error', handleCustomizeError);
         socket.on('tasks:updated', handleTasksUpdated);
         socket.on('meeting:voted', handleVote);
         socket.on('room:message', handleChatMessage);
@@ -230,6 +317,7 @@ function App() {
         EventBus.on('meeting:ended', onMeetingEnded);
         EventBus.on('game:ended', onGameEnded);
         EventBus.on('task:open', onTaskOpen);
+        EventBus.on('laptop:open', onLaptopOpen);
         EventBus.on('game:hud-update', onHudUpdate);
         EventBus.on('minimap:toggle', onToggleMap);
         EventBus.on('game:ready-for-role', onGameReadyForRole);
@@ -237,7 +325,12 @@ function App() {
         return () => {
             socket.off('game:started', handleStartGame);
             socket.off('game:role', handleRoleAssigned);
+            socket.off('player:joined', handlePlayerJoined);
             socket.off('player:left', handlePlayerLeft);
+            socket.off('room:settings:updated', handleSettingsUpdated);
+            socket.off('room:meta:updated', handleMetaUpdated);
+            socket.off('player:customized', handlePlayerCustomized);
+            socket.off('player:customize:error', handleCustomizeError);
             socket.off('tasks:updated', handleTasksUpdated);
             socket.off('meeting:voted', handleVote);
             socket.off('room:message', handleChatMessage);
@@ -248,13 +341,13 @@ function App() {
             EventBus.off('meeting:ended', onMeetingEnded);
             EventBus.off('game:ended', onGameEnded);
             EventBus.off('task:open', onTaskOpen);
+            EventBus.off('laptop:open', onLaptopOpen);
             EventBus.off('game:hud-update', onHudUpdate);
             EventBus.off('minimap:toggle', onToggleMap);
             EventBus.off('game:ready-for-role', onGameReadyForRole);
         };
     }, [socket]);
 
-    // Countdown synced to server endTime
     useEffect(() => {
         if (!meetingActive || !meetingData?.endTime) return;
         const tick = () => {
@@ -270,7 +363,15 @@ function App() {
         roomIdRef.current = data.roomId;
         setRoomId(data.roomId);
         setRoomPlayers(data.room?.players || {});
+        setRoomSettings(data.room?.settings || DEFAULT_ROOM_SETTINGS);
+        setRoomMeta({
+            isPublic: data.room?.isPublic !== false,
+            isOffline: Boolean(data.isOffline || data.room?.isOffline),
+            region: data.room?.region || 'SA',
+            hostName: data.room?.host?.name || 'Host',
+        });
         setIsLocalPlayerHost(Boolean(data.isHost));
+        setLaptopOpen(false);
         setCurrentPage(PAGES.WAITING);
     }, []);
 
@@ -290,13 +391,61 @@ function App() {
         if (socket && playerId) {
             socket.emit('room:leave', { playerId });
         }
+        if (socketService.isOffline()) {
+            socketService.stopOfflineGame();
+        }
         roomIdRef.current = null;
         roleDataRef.current = null;
         setRoomId(null);
         setGameResult(null);
         setMeetingActive(false);
         setShowRoleReveal(false);
+        setLaptopOpen(false);
         setCurrentPage(PAGES.MENU);
+    };
+
+    const handleUpdateSettings = (patch) => {
+        socket.emit('room:update-settings', {
+            roomId,
+            settings: { ...roomSettings, ...patch },
+        });
+    };
+
+    const handleResetSettings = () => {
+        const resetPayload = roomMeta.isOffline
+            ? DEFAULT_ROOM_SETTINGS
+            : {
+                  ...DEFAULT_ROOM_SETTINGS,
+                  botCount: roomSettings.botCount,
+                  botDifficulty: roomSettings.botDifficulty,
+                  preferredRole: roomSettings.preferredRole,
+              };
+        socket.emit('room:update-settings', {
+            roomId,
+            settings: resetPayload,
+        });
+    };
+
+    const handleCustomizePlayer = (patch) => {
+        setCustomError('');
+        socket.emit('player:customize', {
+            roomId,
+            ...patch,
+        });
+    };
+
+    const handleToggleVisibility = () => {
+        if (!isLocalPlayerHost || roomMeta.isOffline) return;
+        soundFX.playClick();
+        socket.emit('room:update-meta', {
+            roomId,
+            isPublic: !roomMeta.isPublic,
+        });
+    };
+
+    const handleCloseLaptop = () => {
+        setLaptopOpen(false);
+        EventBus.emit('laptop:modal-state', false);
     };
 
     const handleVote = ({ votedForId }) => {
@@ -319,12 +468,13 @@ function App() {
     };
 
     const handleCopyRoomCode = () => {
-        if (!roomId) return;
+        if (!roomId || roomMeta.isOffline) return;
         navigator.clipboard?.writeText(roomId).catch(() => {});
         window.showToast?.(`Room code ${roomId} copied!`, 'success', 2000);
     };
 
     const localPlayer = roomPlayers?.[playerIdRef.current];
+    const playerCount = Object.keys(roomPlayers || {}).length;
     const taskPct = Math.round((taskSummary.ratio || 0) * 100);
 
     return (
@@ -351,6 +501,8 @@ function App() {
                     {showRoleReveal && (
                         <RoleReveal
                             isImposter={isLocalPlayerImposter}
+                            impostorCount={roleMeta.impostorCount}
+                            fellowImposters={roleMeta.fellowImposters}
                             players={roomPlayers}
                             localPlayerId={playerIdRef.current}
                             onComplete={() => setShowRoleReveal(false)}
@@ -372,9 +524,93 @@ function App() {
                         </button>
                     </div>
 
-                    <div className={styles.roomTag} onClick={handleCopyRoomCode} title="Click to copy code">
-                        {currentPage === PAGES.GAME ? `${hudInfo.roomName} • ` : ''}Room: {roomId}
+                    <div
+                        className={styles.roomTag}
+                        onClick={handleCopyRoomCode}
+                        title={roomMeta.isOffline ? 'Offline Bot Match' : 'Click to copy room code'}
+                    >
+                        {roomMeta.isOffline ? (
+                            <span>🤖 OFFLINE VS BOTS • {playerCount}/10</span>
+                        ) : currentPage === PAGES.GAME ? (
+                            <span>
+                                {hudInfo.roomName} • Room: {roomId}
+                            </span>
+                        ) : (
+                            <span>
+                                {roomMeta.isPublic ? '🔓 PUBLIC' : '🔒 PRIVATE'} • {roomId} • {playerCount}/10
+                            </span>
+                        )}
                     </div>
+
+                    {currentPage === PAGES.WAITING && (
+                        <>
+                            {/* Live Among Us Style Lobby Settings Card */}
+                            <div className={styles.lobbyRulesCard}>
+                                <div className={styles.lobbyRulesTitle}>
+                                    <span>⚙️ MATCH SETTINGS</span>
+                                    <span className={styles.lobbyMapBadge}>The Skeld</span>
+                                </div>
+                                <div className={styles.lobbyRulesList}>
+                                    <div>Impostors: <b>{roomSettings.impostorCount}</b></div>
+                                    <div>Confirm Ejects: <b>{roomSettings.confirmEjects ? 'On' : 'Off'}</b></div>
+                                    <div>Emergency Meetings: <b>{roomSettings.emergencyMeetings}</b></div>
+                                    <div>Emergency Cooldown: <b>{roomSettings.emergencyCooldownSec}s</b></div>
+                                    <div>Voting Time: <b>{roomSettings.meetingDurationSec}s</b></div>
+                                    <div>Anonymous Votes: <b>{roomSettings.anonymousVotes ? 'On' : 'Off'}</b></div>
+                                    <div>Player Speed: <b>{roomSettings.playerSpeed}x</b></div>
+                                    <div>Crewmate Vision: <b>{roomSettings.crewVision}x</b></div>
+                                    <div>Impostor Vision: <b>{roomSettings.impostorVision}x</b></div>
+                                    <div>Kill Cooldown: <b>{roomSettings.killCooldownSec}s</b></div>
+                                    <div>Kill Distance: <b>{String(roomSettings.killDistance).toUpperCase()}</b></div>
+                                    <div>Tasks: <b>{roomSettings.tasksPerPlayer}</b></div>
+                                    {roomMeta.isOffline && (
+                                        <div className={styles.botRuleHighlight}>
+                                            Bots: <b>{roomSettings.botCount} ({String(roomSettings.botDifficulty).toUpperCase()})</b>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className={styles.waitingFooter}>
+                                <button
+                                    type="button"
+                                    className={styles.laptopShortcutBtn}
+                                    onClick={() => {
+                                        soundFX.playClick();
+                                        setCustomError('');
+                                        setLaptopTab(isLocalPlayerHost ? 'settings' : 'customize');
+                                        setLaptopOpen(true);
+                                        EventBus.emit('laptop:modal-state', true);
+                                    }}
+                                >
+                                    💻 {isLocalPlayerHost ? 'Settings / Color' : 'Customize / Rules'}
+                                </button>
+
+                                {isLocalPlayerHost && !roomMeta.isOffline && (
+                                    <button
+                                        type="button"
+                                        className={`${styles.visBtn} ${
+                                            roomMeta.isPublic ? styles.visPublic : styles.visPrivate
+                                        }`}
+                                        onClick={handleToggleVisibility}
+                                    >
+                                        {roomMeta.isPublic ? '🔓 PUBLIC' : '🔒 PRIVATE'}
+                                    </button>
+                                )}
+
+                                {isLocalPlayerHost ? (
+                                    <Button
+                                        onClick={handleStartGameBtn}
+                                        className={styles.startBtn}
+                                    >
+                                        Start Game
+                                    </Button>
+                                ) : (
+                                    <div className={styles.waitingPill}>Waiting for host to start...</div>
+                                )}
+                            </div>
+                        </>
+                    )}
 
                     {currentPage === PAGES.GAME && (
                         <>
@@ -417,16 +653,21 @@ function App() {
                         </>
                     )}
 
-                    {currentPage === PAGES.WAITING && (
-                        <div className={styles.waitingFooter}>
-                            {isLocalPlayerHost ? (
-                                <Button onClick={handleStartGameBtn} className={styles.startBtn}>
-                                    Start Game
-                                </Button>
-                            ) : (
-                                <div className={styles.waitingPill}>Waiting for host to start...</div>
-                            )}
-                        </div>
+                    {laptopOpen && currentPage === PAGES.WAITING && (
+                        <LaptopModal
+                            initialTab={laptopTab}
+                            isHost={isLocalPlayerHost}
+                            isOffline={roomMeta.isOffline}
+                            hostName={roomMeta.hostName}
+                            player={localPlayer}
+                            players={roomPlayers}
+                            settings={roomSettings}
+                            onUpdateSettings={handleUpdateSettings}
+                            onResetSettings={handleResetSettings}
+                            onCustomizePlayer={handleCustomizePlayer}
+                            customError={customError}
+                            onClose={handleCloseLaptop}
+                        />
                     )}
 
                     {activeTask && (

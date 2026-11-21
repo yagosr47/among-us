@@ -3,7 +3,14 @@ import styles from './RoleReveal.module.css';
 import CrewmateAvatar from './CrewmateAvatar.jsx';
 import { soundFX } from '../utils/sound.js';
 
-export default function RoleReveal({ isImposter, players = {}, localPlayerId, onComplete }) {
+export default function RoleReveal({
+    isImposter,
+    impostorCount = 1,
+    fellowImposters = [],
+    players = {},
+    localPlayerId,
+    onComplete,
+}) {
     const [phase, setPhase] = useState('shh'); // 'shh' -> 'role' -> fadeout
 
     useEffect(() => {
@@ -28,6 +35,12 @@ export default function RoleReveal({ isImposter, players = {}, localPlayerId, on
 
     const playerList = Object.values(players || {});
     const localPlayer = playerList.find((p) => p.id === localPlayerId);
+    const impDisplayList =
+        fellowImposters?.length > 0
+            ? fellowImposters
+            : localPlayer
+              ? [{ id: localPlayer.id, name: localPlayer.name, color: localPlayer.color }]
+              : [];
 
     return (
         <div className={`${styles.overlay} ${phase === 'exit' ? styles.fadeOut : ''}`}>
@@ -51,25 +64,36 @@ export default function RoleReveal({ isImposter, players = {}, localPlayerId, on
                     <p className={styles.roleSub}>
                         {isImposter
                             ? 'Sabotage, vent, and eliminate the crew without getting caught.'
-                            : 'Complete all tasks or find the 1 Impostor among us.'}
+                            : `Complete all tasks or find the ${impostorCount} ${
+                                  impostorCount === 1 ? 'Impostor' : 'Impostors'
+                              } among us.`}
                     </p>
 
                     <div className={styles.lineup}>
                         {isImposter ? (
-                            <div className={styles.featuredAvatar}>
-                                <CrewmateAvatar color={localPlayer?.color || '#c51111'} size={120} />
-                                <span className={styles.playerLabel}>{localPlayer?.name}</span>
-                            </div>
+                            impDisplayList.map((imp, idx) => (
+                                <div
+                                    key={imp.id}
+                                    className={styles.featuredAvatar}
+                                    style={{ animationDelay: `${idx * 90}ms` }}
+                                >
+                                    <CrewmateAvatar
+                                        color={imp.color || '#c51111'}
+                                        size={imp.id === localPlayerId ? 116 : 92}
+                                    />
+                                    <span className={styles.playerLabel}>{imp.name}</span>
+                                </div>
+                            ))
                         ) : (
-                            playerList.slice(0, 8).map((p, idx) => (
+                            playerList.slice(0, 10).map((p, idx) => (
                                 <div
                                     key={p.id}
                                     className={styles.lineupItem}
-                                    style={{ animationDelay: `${idx * 70}ms` }}
+                                    style={{ animationDelay: `${idx * 65}ms` }}
                                 >
                                     <CrewmateAvatar
                                         color={p.color}
-                                        size={p.id === localPlayerId ? 96 : 74}
+                                        size={p.id === localPlayerId ? 92 : 70}
                                     />
                                     <span className={styles.playerLabel}>{p.name}</span>
                                 </div>
