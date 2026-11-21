@@ -1,0 +1,40 @@
+sequenceDiagram
+    box Frontend (React + Phaser)
+        participant Menu as Menu.jsx
+        participant App as App.jsx
+        participant Lobby as WaitingLobby
+        participant Game as Game.js
+    end
+    box Backend (Express + Socket.IO)
+        participant RoomEv as roomEvents.js
+        participant GameEv as gameEvents.js
+        participant Mgr as RoomsManager
+    end
+
+    Menu ->> RoomEv: player:register { id, name, color }
+    RoomEv -->> Menu: player:registered
+    Menu ->> RoomEv: room:create / room:join
+    RoomEv -->> Menu: room:joined (sanitized room)
+    App ->> Lobby: mount WaitingLobby
+
+    App ->> RoomEv: game:start { roomId }
+    RoomEv ->> Mgr: startGame(roomId)
+    RoomEv -->> App: game:started (safeRoom)
+    RoomEv -->> App: game:role (private per socket)
+    App ->> Game: start Scene + RoleReveal
+
+    loop 20 Hz throttled
+        Game ->> GameEv: player:move { x, y, d, moving }
+        GameEv -->> Game: player:moved (other players)
+    end
+
+    Game ->> GameEv: player:kill / player:vent / task:complete
+    GameEv ->> Mgr: validate + update state + checkWin
+    GameEv -->> Game: player:killed / player:vented / tasks:updated
+
+    Game ->> GameEv: meeting:start { type, bodyPlayerId }
+    GameEv -->> App: meeting:started (banner -> tablet)
+    App ->> GameEv: meeting:vote { votedForId }
+    GameEv -->> App: meeting:voted
+    GameEv -->> App: meeting:ended (tally -> ejection)
+    GameEv -->> App: game:ended (victory / defeat)

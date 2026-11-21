@@ -1,0 +1,15 @@
+{
+  "name": "among-us-clone",
+  "version": "2.0.0",
+  "description": "Multiplayer Among Us web clone built with Phaser 3, React, Express, and Socket.IO",
+  "private": true,
+  "scripts": {
+    "install:all": "npm --prefix backend install && npm --prefix frontend install",
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev": "node -e \"const {spawn}=require('child_process'); const a=spawn('npm',['--prefix','backend','run','dev'],{stdio:'inherit'}); const b=spawn('npm',['--prefix','frontend','run','dev'],{stdio:'inherit'}); process.on('SIGINT',()=>{a.kill();b.kill();process.exit();});\"",
+    "build": "npm --prefix frontend run build",
+    "test": "npm --prefix backend test"
+  },
+  "license": "MIT"
+}
