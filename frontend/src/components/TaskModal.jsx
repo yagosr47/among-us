@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import styles from './TaskModal.module.css';
 import CrewmateAvatar from './CrewmateAvatar.jsx';
 import { soundFX } from '../utils/sound.js';
@@ -84,6 +84,11 @@ function SwipeCardGame({ playerColor, onSuccess }) {
 function MedbayScanGame({ playerColor, onSuccess }) {
     const [scanning, setScanning] = useState(false);
     const [pct, setPct] = useState(0);
+    const onSuccessRef = useRef(onSuccess);
+
+    useEffect(() => {
+        onSuccessRef.current = onSuccess;
+    }, [onSuccess]);
 
     useEffect(() => {
         if (!scanning) return;
@@ -91,14 +96,14 @@ function MedbayScanGame({ playerColor, onSuccess }) {
             setPct((prev) => {
                 if (prev >= 100) {
                     clearInterval(iv);
-                    setTimeout(onSuccess, 300);
+                    setTimeout(() => onSuccessRef.current?.(), 300);
                     return 100;
                 }
                 return prev + 4;
             });
         }, 100);
         return () => clearInterval(iv);
-    }, [scanning, onSuccess]);
+    }, [scanning]);
 
     return (
         <div className={styles.gameBox}>
@@ -420,11 +425,12 @@ function ChartCourseGame({ onSuccess }) {
 }
 
 export default function TaskModal({ task, playerColor, onComplete, onClose }) {
-    if (!task) return null;
+    const taskId = task?.id;
+    const handleSuccess = useCallback(() => {
+        if (taskId) onComplete?.(taskId);
+    }, [onComplete, taskId]);
 
-    const handleSuccess = () => {
-        onComplete?.(task.id);
-    };
+    if (!task) return null;
 
     return (
         <div className={styles.overlay} onClick={onClose}>

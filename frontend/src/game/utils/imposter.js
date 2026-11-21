@@ -99,7 +99,7 @@ export function handleImposter(scene) {
     ]);
 
     const triggerKill = () => {
-        if (!scene.player?.alive || scene.meetingActive || scene.player.inVent) return;
+        if (!scene.player?.alive || scene.meetingActive || scene.roleRevealActive || scene.taskModalOpen || scene.player.inVent) return;
         const remaining = Math.max(0, scene.killCooldownEndsAt - Date.now());
         if (remaining > 0) return;
 
@@ -116,7 +116,7 @@ export function handleImposter(scene) {
     };
 
     const toggleVent = () => {
-        if (!scene.player?.alive || scene.meetingActive) return;
+        if (!scene.player?.alive || scene.meetingActive || scene.roleRevealActive || scene.taskModalOpen) return;
 
         if (scene.player.inVent && scene.currentVent) {
             scene.socket.emit('player:vent', {
@@ -218,7 +218,7 @@ export function handleImposterMovement(scene) {
 
     const activeTag = document.activeElement?.tagName;
     const typing = activeTag === 'INPUT' || activeTag === 'TEXTAREA';
-    if (!typing) {
+    if (!typing && !scene.roleRevealActive) {
         if (scene.qKey && Phaser.Input.Keyboard.JustDown(scene.qKey)) scene.triggerImposterKill?.();
         if (scene.kKey && Phaser.Input.Keyboard.JustDown(scene.kKey)) scene.triggerImposterKill?.();
         if (scene.vKey && Phaser.Input.Keyboard.JustDown(scene.vKey)) scene.toggleImposterVent?.();

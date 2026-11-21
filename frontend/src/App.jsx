@@ -63,6 +63,8 @@ function App() {
     const roomIdRef = useRef(null);
     const playerIdRef = useRef(null);
     const roleDataRef = useRef(null);
+    const showRoleRevealRef = useRef(false);
+    showRoleRevealRef.current = showRoleReveal;
     const socket = socketService.getSocket();
 
     useEffect(() => {
@@ -129,6 +131,9 @@ function App() {
         const onGameReadyForRole = () => {
             if (roleDataRef.current && roleDataRef.current.roomId === roomIdRef.current) {
                 EventBus.emit('role:assigned', roleDataRef.current);
+            }
+            if (showRoleRevealRef.current) {
+                EventBus.emit('role:reveal-state', true);
             }
         };
 
@@ -283,15 +288,39 @@ function App() {
         };
 
         const onHudUpdate = (info) => {
-            setHudInfo((prev) => ({
-                ...prev,
-                roomName: info.roomName,
-                x: info.x,
-                y: info.y,
-                alive: info.alive,
-            }));
+            const nextX = Math.round((info.x || 0) * 10) / 10;
+            const nextY = Math.round((info.y || 0) * 10) / 10;
+            setHudInfo((prev) => {
+                if (
+                    prev.roomName === info.roomName &&
+                    prev.x === nextX &&
+                    prev.y === nextY &&
+                    prev.alive === info.alive
+                ) {
+                    return prev;
+                }
+                return {
+                    ...prev,
+                    roomName: info.roomName,
+                    x: nextX,
+                    y: nextY,
+                    alive: info.alive,
+                };
+            });
             if (Array.isArray(info.tasks)) {
-                setTasks(info.tasks);
+                setTasks((prev) => {
+                    if (
+                        prev.length === info.tasks.length &&
+                        prev.every(
+                            (t, idx) =>
+                                t.id === info.tasks[idx]?.id &&
+                                Boolean(t.completed) === Boolean(info.tasks[idx]?.completed)
+                        )
+                    ) {
+                        return prev;
+                    }
+                    return info.tasks;
+                });
             }
         };
 
@@ -361,6 +390,11 @@ function App() {
     const handleJoinRoom = useCallback((data) => {
         playerIdRef.current = data.playerId;
         roomIdRef.current = data.roomId;
+        roleDataRef.current = null;
+        setShowRoleReveal(false);
+        setIsLocalPlayerImposter(false);
+        setTasks([]);
+        setGameResult(null);
         setRoomId(data.roomId);
         setRoomPlayers(data.room?.players || {});
         setRoomSettings(data.room?.settings || DEFAULT_ROOM_SETTINGS);
@@ -456,16 +490,24 @@ function App() {
         socket.emit('room:send:message', { roomId, message });
     };
 
-    const handleCompleteTask = (taskId) => {
+    const handleRoleRevealComplete = useCallback(() => {
+        setShowRoleReveal(false);
+    }, []);
+
+    const handleEjectionComplete = useCallback(() => {
+        setEjectionResults(null);
+    }, []);
+
+    const handleCompleteTask = useCallback((taskId) => {
         setActiveTask(null);
         EventBus.emit('task:modal-state', false);
         EventBus.emit('task:completed-local', { taskId });
-    };
+    }, []);
 
-    const handleCloseTask = () => {
+    const handleCloseTask = useCallback(() => {
         setActiveTask(null);
         EventBus.emit('task:modal-state', false);
-    };
+    }, []);
 
     const handleCopyRoomCode = () => {
         if (!roomId || roomMeta.isOffline) return;
@@ -505,7 +547,7 @@ function App() {
                             fellowImposters={roleMeta.fellowImposters}
                             players={roomPlayers}
                             localPlayerId={playerIdRef.current}
-                            onComplete={() => setShowRoleReveal(false)}
+                            onComplete={handleRoleRevealComplete}
                         />
                     )}
 
@@ -714,7 +756,7 @@ function App() {
                     {ejectionResults && (
                         <EjectionOverlay
                             results={ejectionResults}
-                            onComplete={() => setEjectionResults(null)}
+                            onComplete={handleEjectionComplete}
                         />
                     )}
                 </div>

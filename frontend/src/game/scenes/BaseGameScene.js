@@ -325,8 +325,8 @@ export class BaseGameScene extends Scene {
     handleMovement(time = 0) {
         if (!this.player || !this.player.body || !this.playerObj) return;
 
-        // Disable keyboard movement while modal/meeting/venting/laptop is active
-        if (this.meetingActive || this.taskModalOpen || this.laptopOpen || this.player.inVent) {
+        // Disable keyboard movement while modal/meeting/venting/laptop/role-reveal is active
+        if (this.meetingActive || this.taskModalOpen || this.laptopOpen || this.roleRevealActive || this.player.inVent) {
             this.player.body.setVelocity(0, 0);
             if (this.player.alive && this.player.anims.isPlaying) {
                 this.player.anims.stop();

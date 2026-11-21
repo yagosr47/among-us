@@ -1,7 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import styles from './RoleReveal.module.css';
 import CrewmateAvatar from './CrewmateAvatar.jsx';
+import { EventBus } from '../game/EventBus.js';
 import { soundFX } from '../utils/sound.js';
+
+const SHH_DURATION_MS = 1100;
+const ROLE_HOLD_UNTIL_MS = 2950;
+const EXIT_FADE_MS = 320;
 
 export default function RoleReveal({
     isImposter,
@@ -11,27 +16,83 @@ export default function RoleReveal({
     localPlayerId,
     onComplete,
 }) {
-    const [phase, setPhase] = useState('shh'); // 'shh' -> 'role' -> fadeout
+    const [phase, setPhase] = useState('shh'); // 'shh' -> 'role' -> 'exit'
+
+    const isImposterRef = useRef(isImposter);
+    const onCompleteRef = useRef(onComplete);
+    const phaseRef = useRef(phase);
+    const playedShhRef = useRef(false);
+    const finishedRef = useRef(false);
+    const timersRef = useRef({ t1: null, t2: null, t3: null });
+
+    phaseRef.current = phase;
 
     useEffect(() => {
-        soundFX.playShhh();
-        const t1 = setTimeout(() => {
+        isImposterRef.current = isImposter;
+    }, [isImposter]);
+
+    useEffect(() => {
+        onCompleteRef.current = onComplete;
+    }, [onComplete]);
+
+    const clearAllTimers = useCallback(() => {
+        const { t1, t2, t3 } = timersRef.current;
+        if (t1) clearTimeout(t1);
+        if (t2) clearTimeout(t2);
+        if (t3) clearTimeout(t3);
+        timersRef.current = { t1: null, t2: null, t3: null };
+    }, []);
+
+    const finish = useCallback(() => {
+        if (finishedRef.current) return;
+        finishedRef.current = true;
+        onCompleteRef.current?.();
+    }, []);
+
+    const triggerSkip = useCallback(() => {
+        if (finishedRef.current || phaseRef.current !== 'role') return;
+        phaseRef.current = 'exit';
+        clearAllTimers();
+        setPhase('exit');
+        timersRef.current.t3 = setTimeout(finish, EXIT_FADE_MS);
+    }, [clearAllTimers, finish]);
+
+    useEffect(() => {
+        EventBus.emit('role:reveal-state', true);
+
+        if (!playedShhRef.current) {
+            playedShhRef.current = true;
+            soundFX.playShhh();
+        }
+
+        timersRef.current.t1 = setTimeout(() => {
             setPhase('role');
-            soundFX.playRoleReveal(isImposter);
-        }, 1600);
-        const t2 = setTimeout(() => {
+            soundFX.playRoleReveal(Boolean(isImposterRef.current));
+        }, SHH_DURATION_MS);
+
+        timersRef.current.t2 = setTimeout(() => {
             setPhase('exit');
-        }, 3900);
-        const t3 = setTimeout(() => {
-            onComplete?.();
-        }, 4350);
+        }, ROLE_HOLD_UNTIL_MS);
+
+        timersRef.current.t3 = setTimeout(() => {
+            finish();
+        }, ROLE_HOLD_UNTIL_MS + EXIT_FADE_MS);
 
         return () => {
-            clearTimeout(t1);
-            clearTimeout(t2);
-            clearTimeout(t3);
+            clearAllTimers();
+            EventBus.emit('role:reveal-state', false);
         };
-    }, [isImposter, onComplete]);
+    }, [clearAllTimers, finish]);
+
+    useEffect(() => {
+        const onKeyDown = (e) => {
+            if (e.code === 'Space' || e.key === 'Enter' || e.key === 'Escape') {
+                triggerSkip();
+            }
+        };
+        window.addEventListener('keydown', onKeyDown);
+        return () => window.removeEventListener('keydown', onKeyDown);
+    }, [triggerSkip]);
 
     const playerList = Object.values(players || {});
     const localPlayer = playerList.find((p) => p.id === localPlayerId);
@@ -43,7 +104,10 @@ export default function RoleReveal({
               : [];
 
     return (
-        <div className={`${styles.overlay} ${phase === 'exit' ? styles.fadeOut : ''}`}>
+        <div
+            className={`${styles.overlay} ${phase === 'exit' ? styles.fadeOut : ''}`}
+            onClick={phase === 'role' ? triggerSkip : undefined}
+        >
             <div className={styles.starsLayer} />
 
             {phase === 'shh' && (
@@ -75,7 +139,7 @@ export default function RoleReveal({
                                 <div
                                     key={imp.id}
                                     className={styles.featuredAvatar}
-                                    style={{ animationDelay: `${idx * 90}ms` }}
+                                    style={{ animationDelay: `${idx * 70}ms` }}
                                 >
                                     <CrewmateAvatar
                                         color={imp.color || '#c51111'}
@@ -89,7 +153,7 @@ export default function RoleReveal({
                                 <div
                                     key={p.id}
                                     className={styles.lineupItem}
-                                    style={{ animationDelay: `${idx * 65}ms` }}
+                                    style={{ animationDelay: `${idx * 50}ms` }}
                                 >
                                     <CrewmateAvatar
                                         color={p.color}
@@ -100,6 +164,10 @@ export default function RoleReveal({
                             ))
                         )}
                     </div>
+
+                    {phase === 'role' && (
+                        <p className={styles.skipHint}>Click or press Space to continue</p>
+                    )}
                 </div>
             )}
         </div>

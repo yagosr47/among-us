@@ -1,10 +1,16 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import styles from './EjectionOverlay.module.css';
 import CrewmateAvatar from './CrewmateAvatar.jsx';
 import { soundFX } from '../utils/sound.js';
 
 export default function EjectionOverlay({ results, onComplete }) {
     const [typedText, setTypedText] = useState('');
+    const onCompleteRef = useRef(onComplete);
+    const playedEjectRef = useRef(false);
+
+    useEffect(() => {
+        onCompleteRef.current = onComplete;
+    }, [onComplete]);
 
     let fullMessage = 'No one was ejected. (Skipped)';
     if (results?.ejectedId) {
@@ -23,8 +29,11 @@ export default function EjectionOverlay({ results, onComplete }) {
         fullMessage = 'No one was ejected. (Tie)';
     }
 
+    const hasEjected = Boolean(results?.ejectedId);
+
     useEffect(() => {
-        if (results?.ejectedId) {
+        if (hasEjected && !playedEjectRef.current) {
+            playedEjectRef.current = true;
             soundFX.playEject();
         }
         let idx = 0;
@@ -35,14 +44,14 @@ export default function EjectionOverlay({ results, onComplete }) {
         }, 38);
 
         const doneTimer = setTimeout(() => {
-            onComplete?.();
+            onCompleteRef.current?.();
         }, 3500);
 
         return () => {
             clearInterval(typeTimer);
             clearTimeout(doneTimer);
         };
-    }, [fullMessage, results, onComplete]);
+    }, [fullMessage, hasEjected]);
 
     return (
         <div className={styles.overlay}>

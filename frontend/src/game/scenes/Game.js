@@ -24,6 +24,7 @@ export class Game extends BaseGameScene {
         this.deadBodiesMap = {};
         this.taskModalOpen = false;
         this.meetingActive = false;
+        this.roleRevealActive = false;
         this._lastHudEmitAt = 0;
         this._lastRoomName = '';
         this.emergencyCallsLeft = this.room?.settings?.emergencyMeetings ?? 1;
@@ -63,6 +64,7 @@ export class Game extends BaseGameScene {
         }
 
         await this.createCommon();
+        if (!this.sys || !this.sys.displayList) return;
         this.socket = socketService.getSocket();
         if (this.room?.settings) {
             this.emergencyCallsLeft = this.room.settings.emergencyMeetings ?? 1;
@@ -486,6 +488,10 @@ export class Game extends BaseGameScene {
             this.taskModalOpen = Boolean(isOpen);
         };
 
+        this.onRoleRevealToggle = (isOpen) => {
+            this.roleRevealActive = Boolean(isOpen);
+        };
+
         this.onLocalTaskComplete = ({ taskId }) => {
             if (this.socket && this.roomId && taskId) {
                 this.socket.emit('task:complete', { roomId: this.roomId, taskId });
@@ -501,6 +507,7 @@ export class Game extends BaseGameScene {
         this.socket.on('game:ended', this.onGameEnd);
 
         EventBus.on('task:modal-state', this.onTaskModalToggle);
+        EventBus.on('role:reveal-state', this.onRoleRevealToggle);
         EventBus.on('task:completed-local', this.onLocalTaskComplete);
     }
 
@@ -565,7 +572,7 @@ export class Game extends BaseGameScene {
     }
 
     handleUseAction() {
-        if (!this.player || this.meetingActive || this.taskModalOpen || this.player.inVent) return;
+        if (!this.player || this.meetingActive || this.taskModalOpen || this.roleRevealActive || this.player.inVent) return;
 
         const nearestTask = this.findNearestTask();
         if (nearestTask) {
@@ -592,7 +599,7 @@ export class Game extends BaseGameScene {
     }
 
     handleReportAction() {
-        if (!this.player?.alive || this.meetingActive || this.player.inVent) return;
+        if (!this.player?.alive || this.meetingActive || this.roleRevealActive || this.player.inVent) return;
         const body = this.findNearestDeadBody();
         if (!body) return;
 
@@ -653,7 +660,7 @@ export class Game extends BaseGameScene {
 
         const activeTag = document.activeElement?.tagName;
         const typing = activeTag === 'INPUT' || activeTag === 'TEXTAREA';
-        if (!typing) {
+        if (!typing && !this.roleRevealActive) {
             if (Phaser.Input.Keyboard.JustDown(this.eKey)) this.handleUseAction();
             if (Phaser.Input.Keyboard.JustDown(this.rKey)) this.handleReportAction();
             if (Phaser.Input.Keyboard.JustDown(this.mKey)) EventBus.emit('minimap:toggle');
@@ -690,6 +697,7 @@ export class Game extends BaseGameScene {
         }
         if (this.onRoleAssigned) EventBus.off('role:assigned', this.onRoleAssigned);
         EventBus.off('task:modal-state', this.onTaskModalToggle);
+        if (this.onRoleRevealToggle) EventBus.off('role:reveal-state', this.onRoleRevealToggle);
         EventBus.off('task:completed-local', this.onLocalTaskComplete);
         super.onSceneShutdown();
     }
