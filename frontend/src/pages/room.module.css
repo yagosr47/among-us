@@ -59,6 +59,41 @@
   flex-wrap: wrap;
 }
 
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.headerIconBtn,
+.headerSettingsBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 13px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.88);
+  border: 1.5px solid rgba(148, 163, 184, 0.35);
+  color: #f8fafc;
+  font-size: 0.85rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: border-color 0.15s ease, transform 0.12s ease, background 0.15s ease;
+}
+
+.headerSettingsBtn {
+  border-color: rgba(78, 204, 163, 0.55);
+  color: #a7f3d0;
+}
+
+.headerIconBtn:hover,
+.headerSettingsBtn:hover {
+  transform: translateY(-1px);
+  border-color: #4ecca3;
+  background: rgba(30, 41, 59, 0.96);
+}
+
 .logoImg {
   max-width: 210px;
   height: auto;

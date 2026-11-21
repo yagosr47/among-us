@@ -6,6 +6,8 @@ class SoundEffects {
     constructor() {
         this.ctx = null;
         this.muted = localStorage.getItem('soundMuted') === 'true';
+        const savedVol = Number(localStorage.getItem('soundVolume'));
+        this.volume = Number.isFinite(savedVol) && savedVol >= 0 && savedVol <= 1 ? savedVol : 0.85;
     }
 
     _getCtx() {
@@ -26,6 +28,23 @@ class SoundEffects {
         return this.muted;
     }
 
+    getVolume() {
+        return this.volume;
+    }
+
+    setVolume(val) {
+        const clamped = Math.max(0, Math.min(1, Number(val) || 0));
+        this.volume = clamped;
+        localStorage.setItem('soundVolume', String(clamped));
+        return this.volume;
+    }
+
+    setMuted(nextMuted) {
+        this.muted = Boolean(nextMuted);
+        localStorage.setItem('soundMuted', String(this.muted));
+        return this.muted;
+    }
+
     toggleMute() {
         this.muted = !this.muted;
         localStorage.setItem('soundMuted', String(this.muted));
@@ -35,6 +54,7 @@ class SoundEffects {
     _tone(freq, duration, type = 'sine', volume = 0.14, delay = 0, endFreq = null) {
         const ctx = this._getCtx();
         if (!ctx) return;
+        const scaledVol = Math.max(0.0001, volume * this.volume);
         const now = ctx.currentTime + delay;
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
@@ -44,7 +64,7 @@ class SoundEffects {
             osc.frequency.exponentialRampToValueAtTime(Math.max(20, endFreq), now + duration);
         }
         gain.gain.setValueAtTime(0.0001, now);
-        gain.gain.linearRampToValueAtTime(volume, now + 0.012);
+        gain.gain.linearRampToValueAtTime(scaledVol, now + 0.012);
         gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
         osc.connect(gain);
         gain.connect(ctx.destination);

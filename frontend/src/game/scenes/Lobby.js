@@ -11,11 +11,13 @@ export class WaitingLobby extends BaseGameScene {
         super('WaitingLobby');
         this.handleStartGame = this.handleStartGame.bind(this);
         this.handleLaptopState = this.handleLaptopState.bind(this);
+        this.handleSettingsModalState = this.handleSettingsModalState.bind(this);
     }
 
     init(data) {
         super.init(data);
         this.laptopOpen = false;
+        this.settingsModalOpen = false;
         this._lobbyReady = false;
         this._pendingStartData = null;
         EventBus.off('start-game', this.handleStartGame, this);
@@ -34,6 +36,10 @@ export class WaitingLobby extends BaseGameScene {
 
     handleLaptopState(isOpen) {
         this.laptopOpen = Boolean(isOpen);
+    }
+
+    handleSettingsModalState(isOpen) {
+        this.settingsModalOpen = Boolean(isOpen);
     }
 
     getMapConfig() {
@@ -77,6 +83,8 @@ export class WaitingLobby extends BaseGameScene {
 
         EventBus.off('laptop:modal-state', this.handleLaptopState, this);
         EventBus.on('laptop:modal-state', this.handleLaptopState, this);
+        EventBus.off('settings:modal-state', this.handleSettingsModalState, this);
+        EventBus.on('settings:modal-state', this.handleSettingsModalState, this);
     }
 
     setupLobbyEffects() {
@@ -254,5 +262,6 @@ export class WaitingLobby extends BaseGameScene {
         super.onSceneShutdown();
         EventBus.off('start-game', this.handleStartGame, this);
         EventBus.off('laptop:modal-state', this.handleLaptopState, this);
+        EventBus.off('settings:modal-state', this.handleSettingsModalState, this);
     }
 }

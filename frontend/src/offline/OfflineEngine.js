@@ -11,7 +11,12 @@ import {
     sanitizeRoomSettings,
 } from '../game/skeldData.js';
 import { generateBotRoster } from './BotNames.js';
-import { LOBBY_PATROL_SPOTS, SKELD_PATROL_SPOTS, loadNavGrid } from './NavGrid.js';
+import {
+    LOBBY_PATROL_SPOTS,
+    SKELD_PATROL_SPOTS,
+    SKELD_SPECIAL_SPOTS,
+    loadNavGrid,
+} from './NavGrid.js';
 
 function dist(ax, ay, bx, by) {
     return Math.hypot(ax - bx, ay - by);
@@ -21,6 +26,8 @@ function pickRandomTasks(count = 4) {
     const pool = [...SKELD_TASKS].sort(() => Math.random() - 0.5);
     return pool.slice(0, Math.min(pool.length, count)).map((t) => ({ ...t, completed: false }));
 }
+
+const PERSONALITIES = ['explorer', 'cautious', 'social', 'tasker', 'observer'];
 
 export class OfflineEngine {
     constructor(emitToClient) {
@@ -212,7 +219,6 @@ export class OfflineEngine {
                     candidate.name = `Bot${Object.keys(this.room.players).length + 1}`;
                 }
                 if (existingColors.has(candidate.color.toLowerCase())) {
-                    // Find any unused color
                     const fallback = [
                         '#132ed1',
                         '#117f2d',
@@ -266,15 +272,25 @@ export class OfflineEngine {
 
     createFreshBotAI(seedIdx = 0) {
         return {
+            personality: PERSONALITIES[seedIdx % PERSONALITIES.length],
+            laneBias: ((seedIdx % 5) - 2) * 0.4,
+            speedFactor: 0.94 + ((seedIdx * 37) % 12) * 0.01,
             path: [],
-            pauseUntil: Date.now() + 700 + (seedIdx % 4) * 450,
+            pauseUntil: Date.now() + 650 + (seedIdx % 5) * 380,
             doingTaskId: null,
             taskDoneAt: 0,
+            currentGoalTaskId: null,
             huntTargetId: null,
             repathAt: 0,
+            emergencyRush: false,
+            fleeUntil: 0,
+            detourGoal: null,
+            glanceAt: Date.now() + 1800 + seedIdx * 400,
             suspicion: {},
             witnessedRoom: {},
             trusted: {},
+            lastSeen: {},
+            alibiPartnerId: null,
         };
     }
 
@@ -458,7 +474,8 @@ export class OfflineEngine {
             p.state = { x: spawn.x, y: spawn.y, d: 'right', moving: false };
             if (p.isBot) {
                 p.ai = this.createFreshBotAI(idx);
-                p.ai.pauseUntil = Date.now() + 1200 + idx * 180;
+                // Stagger natural departure from Cafeteria table like real humans checking tasks
+                p.ai.pauseUntil = Date.now() + 900 + Math.random() * 1400 + idx * 140;
             }
         });
 
@@ -534,8 +551,8 @@ export class OfflineEngine {
         const cooldownMs = (this.room.settings.killCooldownSec || 15) * 1000;
         if (Date.now() - (this.room.lastKillAt || 0) < cooldownMs - 300) return false;
 
-        const killRange = KILL_DISTANCE_MAP[this.room.settings.killDistance] || 95;
-        if (dist(killer.state.x, killer.state.y, victim.state.x, victim.state.y) > killRange + 24) {
+        const killRange = KILL_DISTANCE_MAP[this.room.settings.killDistance] || SKELD_CONSTANTS.KILL_RANGE;
+        if (dist(killer.state.x, killer.state.y, victim.state.x, victim.state.y) > killRange + 45) {
             return false;
         }
 
@@ -554,16 +571,27 @@ export class OfflineEngine {
             color: victim.color,
             x: victim.state.x,
             y: victim.state.y,
+            killedAt: Date.now(),
         };
 
-        // Record witness suspicions for alive Crewmate bots within sight
-        const witnessRadius = 115 * (this.room.settings.crewVision || 1.0);
+        // Record witness suspicions for alive Crewmate bots within sight (scaled for 3000x1680)
+        const witnessRadius = SKELD_CONSTANTS.CREW_BASE_VISION * 1.05 * (this.room.settings.crewVision || 1.0);
         const killRoom = getRoomNameAt(victim.state.x, victim.state.y);
+        const diff = this.room.settings.botDifficulty || 'normal';
         Object.values(this.room.players).forEach((p) => {
             if (!p.isBot || !p.isAlive || p.id === killerId || impSet.has(p.id)) return;
-            if (dist(p.state.x, p.state.y, victim.state.x, victim.state.y) <= witnessRadius) {
-                p.ai.suspicion[killerId] = (p.ai.suspicion[killerId] || 0) + 120;
-                p.ai.witnessedRoom[killerId] = `saw ${killer.name} kill in ${killRoom}`;
+            const d = dist(p.state.x, p.state.y, victim.state.x, victim.state.y);
+            if (d <= witnessRadius) {
+                p.ai.suspicion[killerId] = (p.ai.suspicion[killerId] || 0) + 150;
+                p.ai.witnessedRoom[killerId] = `saw ${killer.name} kill ${victim.name} in ${killRoom}`;
+                // Hard & Normal witnesses react immediately (flee or rush to button/body)
+                if (diff === 'hard') {
+                    p.ai.fleeUntil = Date.now() + 4500;
+                    p.ai.emergencyRush = true;
+                    p.ai.path = [];
+                } else if (diff === 'normal') {
+                    p.ai.fleeUntil = Date.now() + 3000;
+                }
             }
         });
 
@@ -608,12 +636,17 @@ export class OfflineEngine {
 
         // Crewmate bots nearby witness the vent!
         if (action === 'enter' || action === 'exit') {
-            const witnessRadius = 105 * (this.room.settings.crewVision || 1.0);
+            const witnessRadius = SKELD_CONSTANTS.CREW_BASE_VISION * (this.room.settings.crewVision || 1.0);
+            const diff = this.room.settings.botDifficulty || 'normal';
             Object.values(this.room.players).forEach((p) => {
                 if (!p.isBot || !p.isAlive || impSet.has(p.id)) return;
                 if (dist(p.state.x, p.state.y, vent.x, vent.y) <= witnessRadius) {
-                    p.ai.suspicion[playerId] = (p.ai.suspicion[playerId] || 0) + 110;
+                    p.ai.suspicion[playerId] = (p.ai.suspicion[playerId] || 0) + 135;
                     p.ai.witnessedRoom[playerId] = `saw ${player.name} vent at ${vent.label}`;
+                    if (diff === 'hard') {
+                        p.ai.emergencyRush = true;
+                        p.ai.path = [];
+                    }
                 }
             });
         }
@@ -683,20 +716,37 @@ export class OfflineEngine {
             caller.emergencyCallsLeft = Math.max(0, (caller.emergencyCallsLeft ?? 1) - 1);
         }
 
-        // Check proximity of suspects to dead body for bot intuition
+        // Spatial & temporal deduction: compare proximity & lastSeen memory near bodyRoom!
+        const impSet = new Set(this.room.imposters || []);
+        const diff = settings.botDifficulty || 'normal';
         if (type === 'body' && bodyPlayerId && this.room.deadBodies[bodyPlayerId]) {
             const body = this.room.deadBodies[bodyPlayerId];
             Object.values(this.room.players).forEach((p) => {
                 if (!p.isAlive || p.id === callerId) return;
                 const d = dist(p.state.x, p.state.y, body.x, body.y);
-                if (d < 170) {
-                    Object.values(this.room.players).forEach((bot) => {
-                        if (!bot.isBot || !bot.isAlive || bot.id === p.id) return;
-                        if (dist(bot.state.x, bot.state.y, body.x, body.y) < 230) {
-                            bot.ai.suspicion[p.id] = (bot.ai.suspicion[p.id] || 0) + 35;
+                const suspectRoom = getRoomNameAt(p.state.x, p.state.y);
+
+                Object.values(this.room.players).forEach((bot) => {
+                    if (!bot.isBot || !bot.isAlive || bot.id === p.id || impSet.has(bot.id)) return;
+                    // Close to the body when reported
+                    if (d < 420 && dist(bot.state.x, bot.state.y, body.x, body.y) < 620) {
+                        bot.ai.suspicion[p.id] = (bot.ai.suspicion[p.id] || 0) + (diff === 'hard' ? 50 : 32);
+                        if (!bot.ai.witnessedRoom[p.id] && d < 320) {
+                            bot.ai.witnessedRoom[p.id] = `saw ${p.name} right near ${bodyName}'s body in ${bodyRoom}`;
                         }
-                    });
-                }
+                    } else if (diff !== 'casual') {
+                        // Did this bot remember seeing `p` inside/leaving `bodyRoom` recently?
+                        const mem = bot.ai.lastSeen?.[p.id];
+                        if (mem && mem.room === bodyRoom && Date.now() - mem.time < 18000 && mem.companions < 2) {
+                            bot.ai.suspicion[p.id] = (bot.ai.suspicion[p.id] || 0) + (diff === 'hard' ? 42 : 25);
+                            if (!bot.ai.witnessedRoom[p.id]) {
+                                bot.ai.witnessedRoom[p.id] = `saw ${p.name} around ${bodyRoom} shortly before the body`;
+                            }
+                        } else if (suspectRoom === bodyRoom && p.id !== callerId) {
+                            bot.ai.suspicion[p.id] = (bot.ai.suspicion[p.id] || 0) + 20;
+                        }
+                    }
+                });
             });
         }
 
@@ -716,6 +766,10 @@ export class OfflineEngine {
         Object.values(this.room.players).forEach((p) => {
             p.inVent = false;
             p.state.moving = false;
+            if (p.isBot && p.ai) {
+                p.ai.emergencyRush = false;
+                p.ai.fleeUntil = 0;
+            }
         });
 
         if (this.meetingTimer) clearTimeout(this.meetingTimer);
@@ -745,6 +799,7 @@ export class OfflineEngine {
         const aliveBots = players.filter((p) => p.isBot && p.isAlive);
         const aliveAll = players.filter((p) => p.isAlive);
         const impSet = new Set(this.room.imposters || []);
+        const diff = this.room.settings.botDifficulty || 'normal';
 
         const sendBotChat = (bot, text, delayMs) => {
             this.scheduleTimer(() => {
@@ -761,53 +816,89 @@ export class OfflineEngine {
             }, delayMs);
         };
 
-        // 1. Caller explains why meeting was called
+        // 1. Caller speaks first naturally
         if (caller.isBot) {
             if (type === 'body') {
-                sendBotChat(caller, `Found ${bodyName}'s body in ${bodyRoom}!`, 1400);
+                const top = this.pickTopSuspect(caller);
+                if (top && caller.ai.witnessedRoom[top.id] && (caller.ai.suspicion[top.id] || 0) >= 85) {
+                    sendBotChat(
+                        caller,
+                        `Body in ${bodyRoom} (${bodyName})! I ${caller.ai.witnessedRoom[top.id]}!`,
+                        1200
+                    );
+                } else {
+                    sendBotChat(caller, `Found ${bodyName}'s body in ${bodyRoom}! Anyone nearby?`, 1250);
+                }
             } else {
                 const top = this.pickTopSuspect(caller);
                 if (top) {
                     sendBotChat(
                         caller,
-                        caller.ai.witnessedRoom[top.id] || `${top.name} is acting super sus!`,
-                        1400
+                        caller.ai.witnessedRoom[top.id]
+                            ? `Emergency! I ${caller.ai.witnessedRoom[top.id]}!`
+                            : `Called meeting — ${top.name} was acting super sus!`,
+                        1300
                     );
                 } else {
-                    sendBotChat(caller, `Emergency check — everyone share where you are!`, 1400);
+                    sendBotChat(caller, `Quick check — where is everyone right now?`, 1300);
                 }
             }
         } else if (type === 'body' && aliveBots.length > 0) {
             const asker = aliveBots[Math.floor(Math.random() * aliveBots.length)];
-            sendBotChat(asker, `Where is ${bodyName}'s body?`, 1550);
+            const queries = [
+                `Where was ${bodyName}'s body?`,
+                `Whoa, ${bodyName} is down in ${bodyRoom}? Did anyone see someone leave?`,
+                `Who was near ${bodyRoom} just now?`,
+            ];
+            sendBotChat(asker, queries[Math.floor(Math.random() * queries.length)], 1450);
         }
 
-        // 2. Two other alive bots chime in with witness info or locations
+        // 2. Up to 3 other alive bots share eyewitness reports, alibis, or deceptive impostor covers
         const chatterBots = aliveBots.filter((b) => b.id !== caller.id).sort(() => Math.random() - 0.5);
         chatterBots.slice(0, 3).forEach((bot, idx) => {
-            const delay = 2400 + idx * 1350;
+            const delay = 2250 + idx * 1250;
             const myRoom = getRoomNameAt(bot.state.x, bot.state.y);
             if (!impSet.has(bot.id)) {
                 const suspect = this.pickTopSuspect(bot);
                 if (suspect && bot.ai.witnessedRoom[suspect.id]) {
-                    sendBotChat(bot, `Wait — I ${bot.ai.witnessedRoom[suspect.id]}!!`, delay);
+                    sendBotChat(bot, `Wait — I ${bot.ai.witnessedRoom[suspect.id]}!`, delay);
                     return;
                 }
+                const trustedId = bot.ai.alibiPartnerId;
+                const trustedFriend = trustedId ? this.room.players[trustedId] : null;
+                if (trustedFriend && trustedFriend.isAlive && trustedFriend.id !== bot.id && diff !== 'casual') {
+                    sendBotChat(
+                        bot,
+                        `I was in ${myRoom} with ${trustedFriend.name}, ${trustedFriend.name} seems safe.`,
+                        delay
+                    );
+                    return;
+                }
+                sendBotChat(bot, `I was over in ${myRoom} working on tasks.`, delay);
             } else {
-                // Impostor bot lies convincingly
+                // Impostor bot builds a convincing alibi or subtly frames a lone crewmate
                 const safeCrew = aliveAll.filter((p) => !impSet.has(p.id) && p.id !== caller.id);
                 const scapegoat = safeCrew[Math.floor(Math.random() * safeCrew.length)];
-                if (scapegoat && Math.random() < 0.45) {
-                    sendBotChat(bot, `I saw ${scapegoat.name} heading away from ${bodyRoom}...`, delay);
-                    return;
+                const fakeRooms = ['Admin', 'MedBay', 'Weapons', 'Storage', 'Upper Engine'].filter(
+                    (r) => r !== bodyRoom
+                );
+                const fakeRoom = fakeRooms[Math.floor(Math.random() * fakeRooms.length)] || 'Cafeteria';
+
+                if (scapegoat && Math.random() < (diff === 'hard' ? 0.55 : 0.35)) {
+                    sendBotChat(
+                        bot,
+                        `Pretty sure I saw ${scapegoat.name} heading away from ${bodyRoom} earlier...`,
+                        delay
+                    );
+                } else {
+                    sendBotChat(bot, `I was doing tasks in ${fakeRoom}, nowhere near ${bodyRoom}.`, delay);
                 }
             }
-            sendBotChat(bot, `I was doing tasks in ${myRoom}.`, delay);
         });
 
-        // 3. Stagger bot votes (human vote will accelerate remaining bots)
+        // 3. Stagger bot votes naturally
         aliveBots.forEach((bot, idx) => {
-            const baseDelay = 3400 + idx * 750 + Math.random() * 1400;
+            const baseDelay = 3300 + idx * 720 + Math.random() * 1400;
             this.scheduleTimer(() => {
                 if (!this.room?.currentMeeting?.isActive) return;
                 if (this.room.currentMeeting.votes[bot.id] !== undefined) return;
@@ -838,24 +929,47 @@ export class OfflineEngine {
         const diff = this.room.settings.botDifficulty || 'normal';
 
         if (impSet.has(bot.id)) {
-            // Impostor bot never votes for fellow impostor; votes for an active suspect or skips
             const crewCandidates = alive.filter((p) => !impSet.has(p.id));
-            if (crewCandidates.length > 0 && Math.random() < 0.58) {
+            if (crewCandidates.length > 0 && Math.random() < (diff === 'hard' ? 0.68 : 0.52)) {
+                // Hard impostors pile onto whoever already has votes or looks suspect
+                const votes = this.room.currentMeeting?.votes || {};
+                const tally = {};
+                Object.values(votes).forEach((v) => {
+                    if (v && v !== 'skip' && !impSet.has(v)) tally[v] = (tally[v] || 0) + 1;
+                });
+                const topVoted = Object.entries(tally).sort((a, b) => b[1] - a[1])[0];
+                if (diff === 'hard' && topVoted) {
+                    return topVoted[0];
+                }
                 return crewCandidates[Math.floor(Math.random() * crewCandidates.length)].id;
             }
             return 'skip';
         }
 
+        // Aggregate shared suspicion for hard bots (simulates listening to chat testimony)
         const top = this.pickTopSuspect(bot);
         if (top) {
             const score = bot.ai.suspicion[top.id] || 0;
-            if (score >= 90 || (diff !== 'hard' && Math.random() < 0.72) || Math.random() < 0.85) {
+            if (score >= 95) return top.id;
+            if (score >= 45 && (diff === 'hard' ? Math.random() < 0.85 : Math.random() < 0.65)) {
                 return top.id;
             }
         }
 
-        // Without clear evidence: hard bots skip responsibly; casual bots sometimes guess
-        const skipChance = diff === 'hard' ? 0.86 : diff === 'normal' ? 0.72 : 0.55;
+        if (diff === 'hard') {
+            // Hard crew bots check if another reliable witness already accused someone strongly
+            const votes = this.room.currentMeeting?.votes || {};
+            const tally = {};
+            Object.values(votes).forEach((v) => {
+                if (v && v !== 'skip') tally[v] = (tally[v] || 0) + 1;
+            });
+            const lead = Object.entries(tally).sort((a, b) => b[1] - a[1])[0];
+            if (lead && lead[1] >= 2 && lead[0] !== bot.id && (bot.ai.trusted?.[lead[0]] || 0) < 3) {
+                return lead[0];
+            }
+        }
+
+        const skipChance = diff === 'hard' ? 0.88 : diff === 'normal' ? 0.74 : 0.56;
         if (Math.random() < skipChance) return 'skip';
         const others = alive.filter((p) => p.id !== bot.id);
         return others.length > 0 ? others[Math.floor(Math.random() * others.length)].id : 'skip';
@@ -883,7 +997,6 @@ export class OfflineEngine {
             totalAlive: alivePlayers.length,
         });
 
-        // If the human just voted, speed up any remaining bots so the game flows briskly
         if (voterId === this.humanId && voteCount < alivePlayers.length) {
             const remainingBots = alivePlayers.filter(
                 (p) => p.isBot && meeting.votes[p.id] === undefined
@@ -893,7 +1006,7 @@ export class OfflineEngine {
                     if (this.room?.currentMeeting?.isActive && meeting.votes[bot.id] === undefined) {
                         this.castVote(bot.id, this.chooseBotVote(bot));
                     }
-                }, 450 + idx * 240);
+                }, 420 + idx * 230);
             });
         }
 
@@ -960,7 +1073,10 @@ export class OfflineEngine {
             if (p.isBot && p.ai) {
                 p.ai.path = [];
                 p.ai.doingTaskId = null;
-                p.ai.pauseUntil = Date.now() + 1400 + idx * 150;
+                p.ai.detourGoal = null;
+                p.ai.emergencyRush = false;
+                p.ai.fleeUntil = 0;
+                p.ai.pauseUntil = Date.now() + 1100 + Math.random() * 1100 + idx * 140;
             }
         });
 
@@ -1050,14 +1166,16 @@ export class OfflineEngine {
     }
 
     tickLobby(now, dtSec) {
-        const speed = 155 * (this.room.settings.playerSpeed || 1);
-        Object.values(this.room.players).forEach((bot) => {
+        const baseSpeed = SKELD_CONSTANTS.BASE_SPEED_LOBBY * 0.65 * Math.min(1.4, this.room.settings.playerSpeed || 1);
+        const allPlayers = Object.values(this.room.players);
+
+        allPlayers.forEach((bot) => {
             if (!bot.isBot) return;
             const ai = bot.ai;
             if (!ai) return;
 
             if (ai.path.length > 0) {
-                this.stepBotAlongPath(bot, speed * dtSec);
+                this.stepBotAlongPath(bot, baseSpeed * ai.speedFactor * dtSec);
                 return;
             }
 
@@ -1066,121 +1184,256 @@ export class OfflineEngine {
                 this.emitToClient('player:moved', { id: bot.id, ...bot.state });
             }
 
+            // While idling in lobby, occasionally glance at nearby players like a human!
+            if (now >= ai.glanceAt && now < ai.pauseUntil) {
+                ai.glanceAt = now + 900 + Math.random() * 1400;
+                const nearest = allPlayers.find(
+                    (o) => o.id !== bot.id && dist(bot.state.x, bot.state.y, o.state.x, o.state.y) < 160
+                );
+                if (nearest) {
+                    const lookDir = nearest.state.x < bot.state.x ? 'left' : 'right';
+                    if (bot.state.d !== lookDir) {
+                        bot.state.d = lookDir;
+                        this.emitToClient('player:moved', { id: bot.id, ...bot.state });
+                    }
+                }
+            }
+
             if (now >= ai.pauseUntil) {
-                const spot = LOBBY_PATROL_SPOTS[Math.floor(Math.random() * LOBBY_PATROL_SPOTS.length)];
+                let target;
+                // 35% chance to walk near another player to socialize; otherwise patrol or pace nearby
+                if (Math.random() < 0.35 && allPlayers.length > 1) {
+                    const friend = allPlayers[Math.floor(Math.random() * allPlayers.length)];
+                    if (friend.id !== bot.id && this.lobbyGrid) {
+                        target = this.lobbyGrid.pickRandomWalkableNear(friend.state.x, friend.state.y, 75);
+                    }
+                }
+                if (!target) {
+                    const spot = LOBBY_PATROL_SPOTS[Math.floor(Math.random() * LOBBY_PATROL_SPOTS.length)];
+                    target = this.lobbyGrid
+                        ? this.lobbyGrid.pickRandomWalkableNear(spot.x, spot.y, 35)
+                        : spot;
+                }
+
                 ai.path = this.lobbyGrid
-                    ? this.lobbyGrid.findPath(bot.state.x, bot.state.y, spot.x, spot.y)
-                    : [{ x: spot.x, y: spot.y }];
-                ai.pauseUntil = now + 2200 + Math.random() * 3200;
+                    ? this.lobbyGrid.findNaturalPath(bot.state.x, bot.state.y, target.x, target.y, {
+                          laneBias: ai.laneBias,
+                          jitterPx: 12,
+                      })
+                    : [{ x: target.x, y: target.y }];
+                ai.pauseUntil = now + 1800 + Math.random() * 2800;
             }
         });
     }
 
+    computeNaturalSkeldPath(bot, goalX, goalY) {
+        const ai = bot.ai;
+        if (!bot.isAlive) {
+            // Ghosts glide smoothly with slight curved arc rather than robotic bee-line
+            const midX = (bot.state.x + goalX) * 0.5 + (Math.random() - 0.5) * 140;
+            const midY = (bot.state.y + goalY) * 0.5 + (Math.random() - 0.5) * 140;
+            return [{ x: Math.round(midX), y: Math.round(midY) }, { x: goalX, y: goalY }];
+        }
+        return this.skeldGrid
+            ? this.skeldGrid.findNaturalPath(bot.state.x, bot.state.y, goalX, goalY, {
+                  laneBias: ai.laneBias,
+                  jitterPx: 20,
+              })
+            : [{ x: goalX, y: goalY }];
+    }
+
     tickGame(now, dtSec) {
         const settings = this.room.settings;
-        const baseSpeed = 112 * (settings.playerSpeed || 1.0);
+        const baseSpeed = SKELD_CONSTANTS.BASE_SPEED_SKELD * (settings.playerSpeed || 1.0);
         const impSet = new Set(this.room.imposters || []);
         const diff = settings.botDifficulty || 'normal';
-        const killRange = KILL_DISTANCE_MAP[settings.killDistance] || 95;
+        const killRange = KILL_DISTANCE_MAP[settings.killDistance] || SKELD_CONSTANTS.KILL_RANGE;
         const killCooldownMs = (settings.killCooldownSec || 15) * 1000;
-        const canScanVision = now - this.lastVisionCheckAt >= 220;
+        const canScanVision = now - this.lastVisionCheckAt >= 240;
         if (canScanVision) this.lastVisionCheckAt = now;
 
-        Object.values(this.room.players).forEach((bot) => {
+        const allPlayers = Object.values(this.room.players);
+        const alivePlayers = allPlayers.filter((p) => p.isAlive && !p.inVent);
+        const crewSight = SKELD_CONSTANTS.CREW_BASE_VISION * (settings.crewVision || 1.0);
+        const impSight = SKELD_CONSTANTS.IMPOSTOR_BASE_VISION * (settings.impostorVision || 1.25);
+
+        allPlayers.forEach((bot) => {
             if (!bot.isBot || bot.inVent) return;
             const ai = bot.ai;
             if (!ai) return;
 
             const isImp = impSet.has(bot.id);
-            const speed = bot.isAlive ? baseSpeed : baseSpeed * 1.25;
+            const speed = (bot.isAlive ? baseSpeed : baseSpeed * 1.25) * ai.speedFactor;
 
-            // 1. Dead body spotting by alive Crewmate bots
-            if (canScanVision && bot.isAlive && !isImp && !this.pendingReport) {
-                const sight = 100 * (settings.crewVision || 1.0);
-                const visibleBody = Object.values(this.room.deadBodies).find(
-                    (b) => dist(bot.state.x, bot.state.y, b.x, b.y) <= sight
+            // 0. Social & Spatial Memory update (tracks who was seen in which room, and builds alibis!)
+            if (canScanVision && bot.isAlive && !isImp) {
+                const seenNearby = alivePlayers.filter(
+                    (o) => o.id !== bot.id && dist(bot.state.x, bot.state.y, o.state.x, o.state.y) <= crewSight
                 );
-                if (visibleBody) {
-                    const reactionMs = diff === 'hard' ? 450 : diff === 'normal' ? 750 : 1200;
-                    this.pendingReport = visibleBody.id;
-                    this.scheduleTimer(() => {
+                const myRoom = getRoomNameAt(bot.state.x, bot.state.y);
+                seenNearby.forEach((other) => {
+                    ai.lastSeen[other.id] = {
+                        room: getRoomNameAt(other.state.x, other.state.y),
+                        time: now,
+                        companions: seenNearby.length,
+                    };
+                    if (myRoom !== 'Hallway' && seenNearby.length >= 1) {
+                        ai.trusted[other.id] = (ai.trusted[other.id] || 0) + 0.2;
                         if (
-                            this.room?.started &&
-                            !this.room.currentMeeting?.isActive &&
-                            bot.isAlive &&
-                            this.room.deadBodies[visibleBody.id]
+                            !ai.alibiPartnerId ||
+                            (ai.trusted[other.id] || 0) > (ai.trusted[ai.alibiPartnerId] || 0)
                         ) {
-                            this.startMeeting(bot.id, 'body', visibleBody.id);
-                        } else {
-                            this.pendingReport = null;
+                            ai.alibiPartnerId = other.id;
                         }
-                    }, reactionMs);
-                    return;
+                    }
+                });
+
+                // Dead body spotting by alive Crewmate bots
+                if (!this.pendingReport) {
+                    const visibleBody = Object.values(this.room.deadBodies).find(
+                        (b) => dist(bot.state.x, bot.state.y, b.x, b.y) <= crewSight
+                    );
+                    if (visibleBody) {
+                        const reactionMs = diff === 'hard' ? 420 : diff === 'normal' ? 750 : 1180;
+                        this.pendingReport = visibleBody.id;
+                        this.scheduleTimer(() => {
+                            if (
+                                this.room?.started &&
+                                !this.room.currentMeeting?.isActive &&
+                                bot.isAlive &&
+                                this.room.deadBodies[visibleBody.id]
+                            ) {
+                                this.startMeeting(bot.id, 'body', visibleBody.id);
+                            } else {
+                                this.pendingReport = null;
+                            }
+                        }, reactionMs);
+                        return;
+                    }
+                }
+
+                // Hard bots who witnessed a kill/vent rush to Emergency Button if safe
+                if (ai.emergencyRush && (bot.emergencyCallsLeft ?? 0) > 0) {
+                    const cdMs = (settings.emergencyCooldownSec || 15) * 1000;
+                    const cdReady = now - (this.room.lastEmergencyAt || 0) >= cdMs;
+                    if (cdReady) {
+                        const btnDist = dist(
+                            bot.state.x,
+                            bot.state.y,
+                            EMERGENCY_BUTTON_POS.x,
+                            EMERGENCY_BUTTON_POS.y
+                        );
+                        if (btnDist <= SKELD_CONSTANTS.EMERGENCY_RANGE) {
+                            ai.emergencyRush = false;
+                            this.startMeeting(bot.id, 'emergency');
+                            return;
+                        }
+                        if (now >= ai.repathAt || ai.path.length === 0) {
+                            ai.repathAt = now + 600;
+                            const btnSpot = this.skeldGrid
+                                ? this.skeldGrid.pickRandomWalkableNear(
+                                      EMERGENCY_BUTTON_POS.x,
+                                      EMERGENCY_BUTTON_POS.y - 95,
+                                      35
+                                  )
+                                : { x: EMERGENCY_BUTTON_POS.x, y: EMERGENCY_BUTTON_POS.y - 95 };
+                            ai.path = this.computeNaturalSkeldPath(bot, btnSpot.x, btnSpot.y);
+                        }
+                    } else {
+                        ai.emergencyRush = false;
+                    }
+                }
+
+                // Danger evasion: if a confirmed suspect approaches while isolated, break away toward Cafeteria
+                if (diff !== 'casual' && now < ai.fleeUntil && ai.path.length === 0) {
+                    const safeGoal = SKELD_SPECIAL_SPOTS.cafeteriaButton;
+                    ai.path = this.computeNaturalSkeldPath(bot, safeGoal.x, safeGoal.y);
                 }
             }
 
-            // 2. Impostor Bot hunting & opportunistic kill + vent escape
+            // 1. Impostor Bot hunting, opportunistic kill, & smart vent/alibi escape
             if (bot.isAlive && isImp) {
                 const cdReady = now - (this.room.lastKillAt || 0) >= killCooldownMs;
                 if (cdReady) {
-                    const aliveTargets = Object.values(this.room.players).filter(
-                        (p) => p.isAlive && !impSet.has(p.id)
-                    );
+                    const aliveTargets = alivePlayers.filter((p) => !impSet.has(p.id));
                     let bestVictim = null;
+                    let bestScore = -Infinity;
                     let bestDist = Infinity;
 
                     for (const t of aliveTargets) {
                         const d = dist(bot.state.x, bot.state.y, t.state.x, t.state.y);
-                        if (d > 195) continue;
-                        const witnesses = aliveTargets.filter(
-                            (w) => w.id !== t.id && dist(w.state.x, w.state.y, t.state.x, t.state.y) <= 125
+                        const searchCap = diff === 'hard' ? impSight * 2.1 : diff === 'normal' ? 540 : 420;
+                        if (d > searchCap) continue;
+
+                        const nearbyWitnesses = aliveTargets.filter(
+                            (w) => w.id !== t.id && dist(w.state.x, w.state.y, t.state.x, t.state.y) <= 360
                         ).length;
-                        const maxWitnesses = diff === 'hard' ? 0 : diff === 'normal' ? 1 : 3;
-                        if (witnesses <= maxWitnesses && d < bestDist) {
+                        const maxWitnesses = diff === 'hard' ? 0 : diff === 'normal' ? 1 : 2;
+                        if (nearbyWitnesses > maxWitnesses) continue;
+
+                        const roomName = getRoomNameAt(t.state.x, t.state.y);
+                        const isolatedBonus = ['Electrical', 'Reactor', 'MedBay', 'Navigation', 'Communications'].includes(
+                            roomName
+                        )
+                            ? 120
+                            : 0;
+                        const score = isolatedBonus - d - nearbyWitnesses * 240;
+                        if (score > bestScore) {
+                            bestScore = score;
                             bestDist = d;
                             bestVictim = t;
                         }
                     }
 
                     if (bestVictim) {
-                        if (bestDist <= killRange * 0.85) {
+                        if (bestDist <= killRange * 0.88) {
                             const killed = this.executeKill(bot.id, bestVictim.id);
                             if (killed) {
                                 ai.path = [];
-                                // Try escaping via nearest vent on Normal/Hard
+                                ai.doingTaskId = null;
+                                // Smart vent escape on Normal/Hard, or immediate walk away into another wing
                                 const nearVent = SKELD_VENTS.find(
-                                    (v) => dist(bot.state.x, bot.state.y, v.x, v.y) <= 85
+                                    (v) => dist(bot.state.x, bot.state.y, v.x, v.y) <= 210
                                 );
-                                const ventProb = diff === 'hard' ? 0.78 : diff === 'normal' ? 0.45 : 0.15;
+                                const ventProb = diff === 'hard' ? 0.85 : diff === 'normal' ? 0.52 : 0.14;
                                 if (nearVent && nearVent.targets?.length && Math.random() < ventProb) {
                                     const destId =
                                         nearVent.targets[Math.floor(Math.random() * nearVent.targets.length)];
                                     this.executeVent(bot.id, 'enter', nearVent.id);
                                     this.scheduleTimer(() => {
                                         this.executeVent(bot.id, 'move', destId);
-                                    }, 450);
+                                    }, 420);
                                     this.scheduleTimer(() => {
                                         this.executeVent(bot.id, 'exit', destId);
-                                    }, 950);
+                                        if (bot.isAlive) {
+                                            const alibiSpot =
+                                                SKELD_PATROL_SPOTS[
+                                                    Math.floor(Math.random() * SKELD_PATROL_SPOTS.length)
+                                                ];
+                                            ai.path = this.computeNaturalSkeldPath(bot, alibiSpot.x, alibiSpot.y);
+                                        }
+                                    }, 920);
+                                } else {
+                                    // Walk briskly toward an opposite room to establish an alibi
+                                    const farSpots = SKELD_PATROL_SPOTS.filter(
+                                        (s) => dist(bot.state.x, bot.state.y, s.x, s.y) > 750
+                                    );
+                                    const escapeSpot =
+                                        farSpots[Math.floor(Math.random() * farSpots.length)] ||
+                                        SKELD_PATROL_SPOTS[0];
+                                    ai.path = this.computeNaturalSkeldPath(bot, escapeSpot.x, escapeSpot.y);
                                 }
                             }
                             return;
                         } else if (now >= ai.repathAt) {
-                            ai.repathAt = now + 450;
-                            ai.path = this.skeldGrid
-                                ? this.skeldGrid.findPath(
-                                      bot.state.x,
-                                      bot.state.y,
-                                      bestVictim.state.x,
-                                      bestVictim.state.y
-                                  )
-                                : [{ x: bestVictim.state.x, y: bestVictim.state.y }];
+                            ai.repathAt = now + (diff === 'hard' ? 420 : 600);
+                            ai.path = this.computeNaturalSkeldPath(bot, bestVictim.state.x, bestVictim.state.y);
                         }
                     }
                 }
             }
 
-            // 3. Follow current path if any
+            // 2. Follow current smooth path
             if (ai.path.length > 0) {
                 this.stepBotAlongPath(bot, speed * dtSec);
                 return;
@@ -1191,8 +1444,14 @@ export class OfflineEngine {
                 this.emitToClient('player:moved', { id: bot.id, ...bot.state });
             }
 
-            // 4. Performing a task pause -> finish task
+            // 3. Performing a task (or faking a task for Impostors)
             if (ai.doingTaskId) {
+                // Occasionally glance left/right subtly while working on console
+                if (now >= ai.glanceAt) {
+                    ai.glanceAt = now + 900 + Math.random() * 1200;
+                    bot.state.d = Math.random() < 0.5 ? 'left' : 'right';
+                    this.emitToClient('player:moved', { id: bot.id, ...bot.state });
+                }
                 if (now >= ai.taskDoneAt) {
                     const doneId = ai.doingTaskId;
                     ai.doingTaskId = null;
@@ -1202,45 +1461,79 @@ export class OfflineEngine {
                         const fake = (bot.tasks || []).find((t) => t.id === doneId);
                         if (fake) fake.completed = true;
                     }
-                    ai.pauseUntil = now + 600 + Math.random() * 1100;
+                    // Natural post-task hesitation before heading out
+                    ai.pauseUntil = now + 450 + Math.random() * 1250;
                 }
                 return;
             }
 
-            // 5. Pick next task or patrol spot after idle pause
             if (now < ai.pauseUntil) return;
+
+            // 4. Organic human micro-decisions: detour to Security/Admin/Buddy or pick next task!
+            if (bot.isAlive && !ai.detourGoal && Math.random() < (diff === 'hard' ? 0.24 : 0.16)) {
+                const choices = [
+                    SKELD_SPECIAL_SPOTS.securityCams,
+                    SKELD_SPECIAL_SPOTS.adminMap,
+                    SKELD_SPECIAL_SPOTS.storageCenter,
+                ];
+                // Cautious/social crewmates sometimes visit their trusted buddy's room
+                if (!isImp && ai.alibiPartnerId && (ai.personality === 'cautious' || ai.personality === 'social')) {
+                    const buddy = this.room.players[ai.alibiPartnerId];
+                    if (buddy && buddy.isAlive) {
+                        choices.push({ x: buddy.state.x, y: buddy.state.y, room: 'Buddy' });
+                    }
+                }
+                const detour = choices[Math.floor(Math.random() * choices.length)];
+                const dest =
+                    this.skeldGrid && bot.isAlive
+                        ? this.skeldGrid.pickRandomWalkableNear(detour.x, detour.y, 48)
+                        : detour;
+                ai.detourGoal = true;
+                ai.path = this.computeNaturalSkeldPath(bot, dest.x, dest.y);
+                ai.pauseUntil = now + 1700 + Math.random() * 2400;
+                return;
+            }
+            ai.detourGoal = false;
 
             const remainingTasks = (bot.tasks || []).filter((t) => !t.completed);
             if (remainingTasks.length > 0) {
-                const nextTask = remainingTasks[Math.floor(Math.random() * remainingTasks.length)];
-                if (dist(bot.state.x, bot.state.y, nextTask.x, nextTask.y) <= 22) {
+                // Human players tend to pick nearby tasks or logical loops instead of teleporting across ship randomly
+                let nextTask;
+                if (diff === 'hard' || ai.personality === 'tasker' || Math.random() < 0.65) {
+                    const sorted = [...remainingTasks].sort(
+                        (a, b) => dist(bot.state.x, bot.state.y, a.x, a.y) - dist(bot.state.x, bot.state.y, b.x, b.y)
+                    );
+                    const pickPool = sorted.slice(0, Math.min(2, sorted.length));
+                    nextTask = pickPool[Math.floor(Math.random() * pickPool.length)];
+                } else {
+                    nextTask = remainingTasks[Math.floor(Math.random() * remainingTasks.length)];
+                }
+
+                if (dist(bot.state.x, bot.state.y, nextTask.x, nextTask.y) <= 72) {
                     ai.doingTaskId = nextTask.id;
                     const taskMs =
                         diff === 'hard'
-                            ? 2200 + Math.random() * 1800
+                            ? 2000 + Math.random() * 1900
                             : diff === 'normal'
-                              ? 3200 + Math.random() * 2400
-                              : 4800 + Math.random() * 3200;
+                              ? 2900 + Math.random() * 2300
+                              : 4200 + Math.random() * 3100;
                     ai.taskDoneAt = now + taskMs;
                     return;
                 }
-                if (!bot.isAlive) {
-                    // Ghosts glide straight over walls directly to their task
-                    ai.path = [{ x: nextTask.x, y: nextTask.y }];
-                } else {
-                    ai.path = this.skeldGrid
-                        ? this.skeldGrid.findPath(bot.state.x, bot.state.y, nextTask.x, nextTask.y)
-                        : [{ x: nextTask.x, y: nextTask.y }];
-                }
+
+                const dest =
+                    this.skeldGrid && bot.isAlive
+                        ? this.skeldGrid.pickRandomWalkableNear(nextTask.x, nextTask.y, 34)
+                        : { x: nextTask.x, y: nextTask.y };
+                ai.path = this.computeNaturalSkeldPath(bot, dest.x, dest.y);
             } else {
-                const spot =
-                    SKELD_PATROL_SPOTS[Math.floor(Math.random() * SKELD_PATROL_SPOTS.length)];
-                ai.path = !bot.isAlive
-                    ? [{ x: spot.x, y: spot.y }]
-                    : this.skeldGrid
-                      ? this.skeldGrid.findPath(bot.state.x, bot.state.y, spot.x, spot.y)
-                      : [{ x: spot.x, y: spot.y }];
-                ai.pauseUntil = now + 1800 + Math.random() * 2600;
+                const spot = SKELD_PATROL_SPOTS[Math.floor(Math.random() * SKELD_PATROL_SPOTS.length)];
+                const dest =
+                    this.skeldGrid && bot.isAlive
+                        ? this.skeldGrid.pickRandomWalkableNear(spot.x, spot.y, 55)
+                        : spot;
+                ai.path = this.computeNaturalSkeldPath(bot, dest.x, dest.y);
+                ai.pauseUntil = now + 1500 + Math.random() * 2600;
             }
         });
     }
@@ -1259,7 +1552,7 @@ export class OfflineEngine {
             if (d <= remaining) {
                 bot.state.x = target.x;
                 bot.state.y = target.y;
-                if (Math.abs(dx) > 0.2) {
+                if (Math.abs(dx) > 0.25) {
                     bot.state.d = dx < 0 ? 'left' : 'right';
                 }
                 ai.path.shift();
@@ -1267,7 +1560,7 @@ export class OfflineEngine {
             } else {
                 bot.state.x += (dx / d) * remaining;
                 bot.state.y += (dy / d) * remaining;
-                if (Math.abs(dx) > 0.2) {
+                if (Math.abs(dx) > 0.25) {
                     bot.state.d = dx < 0 ? 'left' : 'right';
                 }
                 remaining = 0;

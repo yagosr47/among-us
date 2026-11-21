@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { SKELD_CONSTANTS } from '../skeldData.js';
 
 export function setupVisionSystem(scene) {
     if (!scene.player || !scene.collisionLayer) return;
@@ -13,7 +14,10 @@ export function setupVisionSystem(scene) {
         scene.mapObjectBounds.push({
             object: scene.background,
             origin: { x: 0, y: 0 },
-            size: { width: scene.background.width, height: scene.background.height },
+            size: {
+                width: scene.background.displayWidth || scene.background.width,
+                height: scene.background.displayHeight || scene.background.height,
+            },
         });
         scene.mapObjects.push(scene.background);
     }
@@ -23,7 +27,10 @@ export function setupVisionSystem(scene) {
         scene.mapObjectBounds.push({
             object: scene.collisionLayer,
             origin: { x: 0, y: 0 },
-            size: { width: scene.collisionLayer.width, height: scene.collisionLayer.height },
+            size: {
+                width: scene.collisionLayer.displayWidth || scene.collisionLayer.width,
+                height: scene.collisionLayer.displayHeight || scene.collisionLayer.height,
+            },
         });
         scene.mapObjects.push(scene.collisionLayer);
     }
@@ -31,7 +38,9 @@ export function setupVisionSystem(scene) {
     const settings = scene.room?.settings || {};
     const crewMult = settings.crewVision || 1.0;
     const impMult = settings.impostorVision || 1.25;
-    scene.VISION_RADIUS = scene.imposter ? Math.round(112 * impMult) : Math.round(108 * crewMult);
+    scene.VISION_RADIUS = scene.imposter
+        ? Math.round(SKELD_CONSTANTS.IMPOSTOR_BASE_VISION * impMult)
+        : Math.round(SKELD_CONSTANTS.CREW_BASE_VISION * crewMult);
     scene.visionEnabled = true;
 }
 

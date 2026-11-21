@@ -4,6 +4,7 @@ import { socketService } from '../../services/socket.js';
 import { EventBus } from '../EventBus.js';
 import { createPlayer, spawnDustPuff } from '../utils/playerFactory.js';
 import { soundFX } from '../../utils/sound.js';
+import { MAP_DIMENSIONS, SKELD_CONSTANTS } from '../skeldData.js';
 
 export class BaseGameScene extends Scene {
     constructor(key) {
@@ -88,17 +89,31 @@ export class BaseGameScene extends Scene {
 
     setupMap() {
         const config = this.getMapConfig();
+        const isLobby = this.scene.key === 'WaitingLobby';
         const map = this.make.tilemap({ key: config.mapKey });
         const tileset = map.addTilesetImage(config.tilesetName, config.tilesetKey);
         const collisionLayer = map.createLayer('collisions', tileset, 0, 0);
 
         this.background = this.add.image(0, 0, config.backgroundKey).setOrigin(0, 0).setName('background');
+        if (!isLobby && this.background.width > 0 && this.background.height > 0) {
+            this.background.setScale(
+                MAP_DIMENSIONS.SKELD_WIDTH / this.background.width,
+                MAP_DIMENSIONS.SKELD_HEIGHT / this.background.height
+            );
+        }
         this.worldContainer.add(this.background);
 
+        const worldW = isLobby ? MAP_DIMENSIONS.LOBBY_WIDTH : MAP_DIMENSIONS.SKELD_WIDTH;
+        const worldH = isLobby ? MAP_DIMENSIONS.LOBBY_HEIGHT : MAP_DIMENSIONS.SKELD_HEIGHT;
+        if (this.physics?.world) {
+            this.physics.world.setBounds(0, 0, worldW, worldH);
+            this.physics.world.TILE_BIAS = isLobby ? 16 : 24;
+        }
+
         if (collisionLayer) {
-            if (this.scene.key === 'WaitingLobby') {
-                const scaleX = 1232 / map.widthInPixels;
-                const scaleY = 1008 / map.heightInPixels;
+            if (isLobby) {
+                const scaleX = MAP_DIMENSIONS.LOBBY_WIDTH / map.widthInPixels;
+                const scaleY = MAP_DIMENSIONS.LOBBY_HEIGHT / map.heightInPixels;
                 collisionLayer.setScale(scaleX, scaleY);
             }
             collisionLayer.setVisible(false);
@@ -168,7 +183,7 @@ export class BaseGameScene extends Scene {
             isAlive: data.player.isAlive,
         });
 
-        const zoom = this.scene.key === 'WaitingLobby' ? 1 : 3;
+        const zoom = this.scene.key === 'WaitingLobby' ? 1 : 1.85;
         this.cameras.main.setZoom(zoom);
         this.cameras.main.startFollow(this.player, true, 0.14, 0.14);
         this.cameras.main.ignore(this.ui);
@@ -276,13 +291,14 @@ export class BaseGameScene extends Scene {
 
     interpolateRemotePlayers(delta) {
         const lerpFactor = 1 - Math.exp(-18 * (delta / 1000));
+        const snapDist = this.scene.key === 'WaitingLobby' ? 95 : 220;
         Object.values(this.players || {}).forEach((p) => {
             if (!p || p === this.player) return;
 
             if (typeof p.targetX === 'number' && typeof p.targetY === 'number') {
                 const dx = p.targetX - p.x;
                 const dy = p.targetY - p.y;
-                if (Math.hypot(dx, dy) > 80) {
+                if (Math.hypot(dx, dy) > snapDist) {
                     p.x = p.targetX;
                     p.y = p.targetY;
                 } else {
@@ -308,8 +324,8 @@ export class BaseGameScene extends Scene {
 
     syncPlayerAttachments() {
         const isLobby = this.scene.key === 'WaitingLobby';
-        const shadowOffsetY = isLobby ? 20 : 9;
-        const nameOffsetY = isLobby ? 26 : 12;
+        const shadowOffsetY = isLobby ? 20 : 14;
+        const nameOffsetY = isLobby ? 28 : 21;
 
         Object.values(this.players || {}).forEach((p) => {
             if (!p || !p.active) return;
@@ -325,8 +341,15 @@ export class BaseGameScene extends Scene {
     handleMovement(time = 0) {
         if (!this.player || !this.player.body || !this.playerObj) return;
 
-        // Disable keyboard movement while modal/meeting/venting/laptop/role-reveal is active
-        if (this.meetingActive || this.taskModalOpen || this.laptopOpen || this.roleRevealActive || this.player.inVent) {
+        // Disable keyboard movement while modal/meeting/venting/laptop/role-reveal/settings is active
+        if (
+            this.meetingActive ||
+            this.taskModalOpen ||
+            this.laptopOpen ||
+            this.settingsModalOpen ||
+            this.roleRevealActive ||
+            this.player.inVent
+        ) {
             this.player.body.setVelocity(0, 0);
             if (this.player.alive && this.player.anims.isPlaying) {
                 this.player.anims.stop();
@@ -344,8 +367,11 @@ export class BaseGameScene extends Scene {
 
         this.player.body.setVelocity(0, 0);
 
+        const isLobby = this.scene.key === 'WaitingLobby';
         const speedMultiplier = this.room?.settings?.playerSpeed || 1.0;
-        const baseSpeed = this.scene.key === 'WaitingLobby' ? 300 * Math.min(1.4, speedMultiplier) : 112 * speedMultiplier;
+        const baseSpeed = isLobby
+            ? SKELD_CONSTANTS.BASE_SPEED_LOBBY * Math.min(1.4, speedMultiplier)
+            : SKELD_CONSTANTS.BASE_SPEED_SKELD * speedMultiplier;
         const speed = this.player.alive ? baseSpeed : baseSpeed * 1.25;
         let vx = 0;
         let vy = 0;
@@ -384,7 +410,7 @@ export class BaseGameScene extends Scene {
                         this.player.x,
                         this.player.y,
                         0xcbd5e1,
-                        this.scene.key === 'WaitingLobby' ? 2.1 : 0.9
+                        isLobby ? 2.1 : 1.35
                     );
                 }
                 if (time - this._lastFootstepAt > 280) {

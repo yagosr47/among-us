@@ -22,14 +22,14 @@ export function setPlayerColor(scene, sprite, colorHex) {
 export function createPlayer(scene, playerData, options = {}) {
     const { addCollision = false, collisionLayer = null, isImposterTag = false } = options;
     const isLobby = scene.scene.key === 'WaitingLobby';
-    const baseScale = isLobby ? 0.24 : 0.1;
+    const baseScale = isLobby ? 0.24 : 0.16;
 
     // Ground drop shadow
     const shadow = scene.add.ellipse(
         playerData.x,
-        playerData.y + (isLobby ? 20 : 9),
-        isLobby ? 34 : 15,
-        isLobby ? 12 : 5,
+        playerData.y + (isLobby ? 20 : 14),
+        isLobby ? 34 : 23,
+        isLobby ? 12 : 8,
         0x000000,
         0.38
     );
@@ -50,9 +50,10 @@ export function createPlayer(scene, playerData, options = {}) {
         wallCollider = scene.physics.add.collider(player, collisionLayer);
     }
 
+    // Feet-centered hitbox so 2.5D head/visor never clips or snags on walls & obstacles
     player.setScale(baseScale);
-    player.body.setSize(player.width * 0.4, player.height * 0.55);
-    player.body.setOffset(player.width * 0.3, player.height * 0.25);
+    player.body.setSize(player.width * 0.44, player.height * 0.28);
+    player.body.setOffset(player.width * 0.28, player.height * 0.63);
 
     setPlayerColor(scene, player, playerData.color);
 
@@ -60,17 +61,17 @@ export function createPlayer(scene, playerData, options = {}) {
     const nameText = scene.add
         .text(0, 0, playerData.name || 'Player', {
             fontFamily: 'Arial, sans-serif',
-            fontSize: isLobby ? '15px' : '11px',
+            fontSize: isLobby ? '15px' : '14px',
             fontStyle: 'bold',
             color: isImposterTag ? '#ff4d4d' : '#ffffff',
             stroke: '#000000',
-            strokeThickness: isLobby ? 4 : 3,
+            strokeThickness: isLobby ? 4 : 3.5,
             align: 'center',
         })
         .setOrigin(0.5, 1)
         .setDepth(500);
     if (!isLobby) {
-        nameText.setScale(0.75);
+        nameText.setScale(0.85);
     }
     scene.worldContainer.add(nameText);
 

@@ -23,6 +23,7 @@ export class Game extends BaseGameScene {
         this.initialCooldownMs = data?.initialCooldownMs || 10000;
         this.deadBodiesMap = {};
         this.taskModalOpen = false;
+        this.settingsModalOpen = false;
         this.meetingActive = false;
         this.roleRevealActive = false;
         this._lastHudEmitAt = 0;
@@ -119,7 +120,9 @@ export class Game extends BaseGameScene {
             const settings = this.room?.settings || {};
             const crewMult = settings.crewVision || 1.0;
             const impMult = settings.impostorVision || 1.25;
-            this.VISION_RADIUS = this.imposter ? Math.round(112 * impMult) : Math.round(108 * crewMult);
+            this.VISION_RADIUS = this.imposter
+                ? Math.round(SKELD_CONSTANTS.IMPOSTOR_BASE_VISION * impMult)
+                : Math.round(SKELD_CONSTANTS.CREW_BASE_VISION * crewMult);
         }
     }
 
@@ -187,14 +190,14 @@ export class Game extends BaseGameScene {
     setupWorldHotspots() {
         // Emergency table pulsing aura
         this.emergencyRing = this.add
-            .circle(EMERGENCY_BUTTON_POS.x, EMERGENCY_BUTTON_POS.y, 16, 0xef4444, 0.14)
-            .setStrokeStyle(1.5, 0xf87171, 0.65)
+            .circle(EMERGENCY_BUTTON_POS.x, EMERGENCY_BUTTON_POS.y, 34, 0xef4444, 0.14)
+            .setStrokeStyle(2.5, 0xf87171, 0.7)
             .setDepth(6);
         this.worldContainer.add(this.emergencyRing);
         this.tweens.add({
             targets: this.emergencyRing,
-            scale: 1.25,
-            alpha: 0.35,
+            scale: 1.22,
+            alpha: 0.38,
             duration: 950,
             yoyo: true,
             repeat: -1,
@@ -203,8 +206,8 @@ export class Game extends BaseGameScene {
         // Subtle vent grates markers for visual clarity
         SKELD_VENTS.forEach((v) => {
             const marker = this.add
-                .rectangle(v.x, v.y, 14, 10, 0x334155, 0.45)
-                .setStrokeStyle(1, 0x94a3b8, 0.5)
+                .rectangle(v.x, v.y, 28, 20, 0x334155, 0.48)
+                .setStrokeStyle(1.5, 0x94a3b8, 0.55)
                 .setDepth(4);
             this.worldContainer.add(marker);
         });
@@ -221,9 +224,9 @@ export class Game extends BaseGameScene {
             if (task.completed) return;
             const container = this.add.container(task.x, task.y).setDepth(7);
             const ring = this.add
-                .circle(0, 0, 11, 0xfacc15, 0.15)
-                .setStrokeStyle(1.5, 0xfef08a, 0.85);
-            const dot = this.add.circle(0, 0, 3, 0xfacc15, 0.95);
+                .circle(0, 0, 22, 0xfacc15, 0.16)
+                .setStrokeStyle(2.5, 0xfef08a, 0.88);
+            const dot = this.add.circle(0, 0, 6, 0xfacc15, 0.95);
             container.add([ring, dot]);
 
             this.tweens.add({
@@ -292,12 +295,12 @@ export class Game extends BaseGameScene {
             // Spawn red impact particle burst
             for (let i = 0; i < 10; i++) {
                 const angle = (Math.PI * 2 * i) / 10;
-                const p = this.add.circle(data.x, data.y, 2.5, 0xef4444, 0.9).setDepth(550);
+                const p = this.add.circle(data.x, data.y, 4, 0xef4444, 0.9).setDepth(550);
                 this.worldContainer.add(p);
                 this.tweens.add({
                     targets: p,
-                    x: data.x + Math.cos(angle) * Phaser.Math.Between(10, 24),
-                    y: data.y + Math.sin(angle) * Phaser.Math.Between(10, 24),
+                    x: data.x + Math.cos(angle) * Phaser.Math.Between(22, 52),
+                    y: data.y + Math.sin(angle) * Phaser.Math.Between(22, 52),
                     alpha: 0,
                     scale: 0.2,
                     duration: 380,
@@ -313,7 +316,7 @@ export class Game extends BaseGameScene {
             // Play animated death sequence tinted with VICTIM's color -> persistent colored dead body
             const deathAnim = this.add
                 .sprite(data.x, data.y, 'death', 'Dead0001')
-                .setScale(0.125)
+                .setScale(0.2)
                 .setDepth(450);
             setPlayerColor(this, deathAnim, data.color);
             this.worldContainer.add(deathAnim);
@@ -322,7 +325,7 @@ export class Game extends BaseGameScene {
                 deathAnim.destroy();
                 const body = this.add
                     .sprite(data.x, data.y, 'deadBody')
-                    .setScale(0.125)
+                    .setScale(0.2)
                     .setDepth(15);
                 setPlayerColor(this, body, data.color);
                 body.bodyPlayerId = targetId;
@@ -340,14 +343,14 @@ export class Game extends BaseGameScene {
             // Play vent cover clank animation at the vent location
             const ventFx = this.add
                 .sprite(data.x, data.y, 'vent1')
-                .setScale(0.1)
+                .setScale(0.16)
                 .setDepth(420);
             setPlayerColor(this, ventFx, sprite.playerColor);
             this.worldContainer.add(ventFx);
             ventFx.anims.play('ventAnim');
             ventFx.once('animationcomplete', () => ventFx.destroy());
 
-            spawnDustPuff(this, data.x, data.y, 0x94a3b8, 1.4);
+            spawnDustPuff(this, data.x, data.y, 0x94a3b8, 2.2);
 
             if (data.action === 'enter') {
                 sprite.inVent = true;
@@ -393,12 +396,12 @@ export class Game extends BaseGameScene {
             if (this.player) {
                 for (let i = 0; i < 8; i++) {
                     const angle = (Math.PI * 2 * i) / 8;
-                    const spark = this.add.circle(this.player.x, this.player.y, 2, 0x4ade80, 0.95).setDepth(550);
+                    const spark = this.add.circle(this.player.x, this.player.y, 3.5, 0x4ade80, 0.95).setDepth(550);
                     this.worldContainer.add(spark);
                     this.tweens.add({
                         targets: spark,
-                        x: this.player.x + Math.cos(angle) * 20,
-                        y: this.player.y + Math.sin(angle) * 20,
+                        x: this.player.x + Math.cos(angle) * 38,
+                        y: this.player.y + Math.sin(angle) * 38,
                         alpha: 0,
                         duration: 420,
                         onComplete: () => spark.destroy(),
@@ -488,6 +491,10 @@ export class Game extends BaseGameScene {
             this.taskModalOpen = Boolean(isOpen);
         };
 
+        this.onSettingsModalToggle = (isOpen) => {
+            this.settingsModalOpen = Boolean(isOpen);
+        };
+
         this.onRoleRevealToggle = (isOpen) => {
             this.roleRevealActive = Boolean(isOpen);
         };
@@ -507,6 +514,7 @@ export class Game extends BaseGameScene {
         this.socket.on('game:ended', this.onGameEnd);
 
         EventBus.on('task:modal-state', this.onTaskModalToggle);
+        EventBus.on('settings:modal-state', this.onSettingsModalToggle);
         EventBus.on('role:reveal-state', this.onRoleRevealToggle);
         EventBus.on('task:completed-local', this.onLocalTaskComplete);
     }
@@ -697,6 +705,7 @@ export class Game extends BaseGameScene {
         }
         if (this.onRoleAssigned) EventBus.off('role:assigned', this.onRoleAssigned);
         EventBus.off('task:modal-state', this.onTaskModalToggle);
+        if (this.onSettingsModalToggle) EventBus.off('settings:modal-state', this.onSettingsModalToggle);
         if (this.onRoleRevealToggle) EventBus.off('role:reveal-state', this.onRoleRevealToggle);
         EventBus.off('task:completed-local', this.onLocalTaskComplete);
         super.onSceneShutdown();

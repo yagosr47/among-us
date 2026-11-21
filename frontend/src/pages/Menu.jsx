@@ -7,6 +7,8 @@ import CrewmateAvatar from '../components/CrewmateAvatar.jsx';
 import { PLAYER_COLORS, getRandomColor, getColorMeta } from '../utils/colors.js';
 import { DEFAULT_ROOM_SETTINGS, REGION_OPTIONS, SETTING_OPTIONS } from '../game/skeldData.js';
 import { soundFX } from '../utils/sound.js';
+import SettingsModal from '../components/SettingsModal.jsx';
+import { loadHudPrefs, saveHudPrefs } from '../utils/hudPrefs.js';
 
 const FLOATING_CREW = [
     { color: '#c51111', top: '10%', left: '6%', delay: '0s', size: 52 },
@@ -43,8 +45,25 @@ export function Menu({ onJoinGame }) {
     const [preferredRole, setPreferredRole] = useState('random');
     const [offlineImpostors, setOfflineImpostors] = useState(1);
 
+    // Settings & Audio UI state
+    const [settingsOpen, setSettingsOpen] = useState(false);
+    const [muted, setMuted] = useState(() => soundFX.isMuted());
+    const [hudPrefs, setHudPrefs] = useState(() => loadHudPrefs());
+
     const pendingActionRef = useRef(null);
     const socket = socketService.getSocket();
+
+    const handleToggleMute = useCallback((forcedState) => {
+        const next =
+            typeof forcedState === 'boolean' ? soundFX.setMuted(forcedState) : soundFX.toggleMute();
+        setMuted(next);
+        return next;
+    }, []);
+
+    const handleUpdateHudPrefs = useCallback((nextPrefs) => {
+        setHudPrefs(nextPrefs);
+        saveHudPrefs(nextPrefs);
+    }, []);
 
     useEffect(() => {
         const savedName = localStorage.getItem('playerName');
@@ -299,25 +318,45 @@ export function Menu({ onJoinGame }) {
             ))}
 
             <div className={styles.shell}>
-                {/* Header Brand + Server Status */}
+                {/* Header Brand + Server Status + Settings */}
                 <div className={styles.topHeader}>
                     <img src="/assets/logo.png" alt="Among Us" className={styles.logoImg} />
-                    <div className={styles.statusPill}>
-                        <span
-                            className={`${styles.statusDot} ${
-                                serverStatus.online ? styles.dotGreen : styles.dotAmber
-                            }`}
-                        />
-                        {serverStatus.online ? (
-                            <span>
-                                Server Online • {serverStatus.pingMs}ms • {publicWaitingCount} Open{' '}
-                                {publicWaitingCount === 1 ? 'Lobby' : 'Lobbies'}
-                            </span>
-                        ) : serverStatus.checking ? (
-                            <span>Checking server...</span>
-                        ) : (
-                            <span>Server Offline — Bot Mode Ready</span>
-                        )}
+                    <div className={styles.headerActions}>
+                        <div className={styles.statusPill}>
+                            <span
+                                className={`${styles.statusDot} ${
+                                    serverStatus.online ? styles.dotGreen : styles.dotAmber
+                                }`}
+                            />
+                            {serverStatus.online ? (
+                                <span>
+                                    Server Online • {serverStatus.pingMs}ms • {publicWaitingCount} Open{' '}
+                                    {publicWaitingCount === 1 ? 'Lobby' : 'Lobbies'}
+                                </span>
+                            ) : serverStatus.checking ? (
+                                <span>Checking server...</span>
+                            ) : (
+                                <span>Server Offline — Bot Mode Ready</span>
+                            )}
+                        </div>
+                        <button
+                            type="button"
+                            className={styles.headerIconBtn}
+                            onClick={() => handleToggleMute()}
+                            title={muted ? 'Unmute Sound Effects' : 'Mute Sound Effects'}
+                        >
+                            {muted ? '🔇' : '🔊'}
+                        </button>
+                        <button
+                            type="button"
+                            className={styles.headerSettingsBtn}
+                            onClick={() => {
+                                soundFX.playClick();
+                                setSettingsOpen(true);
+                            }}
+                        >
+                            ⚙️ Settings
+                        </button>
                     </div>
                 </div>
 
@@ -870,6 +909,17 @@ export function Menu({ onJoinGame }) {
                     </div>
                 )}
             </div>
+
+            {settingsOpen && (
+                <SettingsModal
+                    mode="menu"
+                    muted={muted}
+                    onToggleMute={handleToggleMute}
+                    hudPrefs={hudPrefs}
+                    onUpdateHudPrefs={handleUpdateHudPrefs}
+                    onClose={() => setSettingsOpen(false)}
+                />
+            )}
         </div>
     );
 }

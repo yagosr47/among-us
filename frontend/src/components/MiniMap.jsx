@@ -1,16 +1,16 @@
 import styles from './MiniMap.module.css';
+import { MAP_DIMENSIONS } from '../game/skeldData.js';
 
 export default function MiniMap({
-    playerPos = { x: 560, y: 118 },
+    playerPos = { x: 1689, y: 378 },
     playerColor = '#c51111',
     roomName = 'Cafeteria',
     tasks = [],
     isImposter = false,
     onClose,
 }) {
-    // skled.png is 1000 x 560
-    const leftPct = Math.max(0, Math.min(100, (playerPos.x / 1000) * 100));
-    const topPct = Math.max(0, Math.min(100, (playerPos.y / 560) * 100));
+    const leftPct = Math.max(0, Math.min(100, (playerPos.x / MAP_DIMENSIONS.SKELD_WIDTH) * 100));
+    const topPct = Math.max(0, Math.min(100, (playerPos.y / MAP_DIMENSIONS.SKELD_HEIGHT) * 100));
 
     return (
         <div className={styles.overlay} onClick={onClose}>
@@ -35,8 +35,8 @@ export default function MiniMap({
                                     key={t.id}
                                     className={styles.taskPin}
                                     style={{
-                                        left: `${(t.x / 1000) * 100}%`,
-                                        top: `${(t.y / 560) * 100}%`,
+                                        left: `${(t.x / MAP_DIMENSIONS.SKELD_WIDTH) * 100}%`,
+                                        top: `${(t.y / MAP_DIMENSIONS.SKELD_HEIGHT) * 100}%`,
                                     }}
                                     title={`${t.title} (${t.room})`}
                                 >
